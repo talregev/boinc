@@ -91,6 +91,7 @@ int CLIENT_STATE::get_disk_usages() {
         p = projects[i];
         p->disk_usage = 0;
         retval = dir_size(p->project_dir(), size);
+        msg_printf(NULL, MSG_INFO, "TalR get_disk_usages Dir: %s Site: %d", p->project_dir(), retval);
         if (!retval) p->disk_usage = size;
     }
 
@@ -98,6 +99,7 @@ int CLIENT_STATE::get_disk_usages() {
         ACTIVE_TASK* atp = active_tasks.active_tasks[i];
         get_slot_dir(atp->slot, buf, sizeof(buf));
         retval = dir_size(buf, size);
+        msg_printf(NULL, MSG_INFO, "TalR get_disk_usages Dir: %s Size: %d", buf, retval);
         if (retval) continue;
         atp->wup->project->disk_usage += size;
     }
@@ -106,6 +108,7 @@ int CLIENT_STATE::get_disk_usages() {
         total_disk_usage += p->disk_usage;
     }
     retval = dir_size(".", size, false);
+    msg_printf(NULL, MSG_INFO, "TalR get_disk_usages Dir: %s Size: %d", ".", retval);
     if (!retval) {
         client_disk_usage = size;
         total_disk_usage += size;

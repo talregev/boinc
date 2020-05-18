@@ -169,7 +169,9 @@ static void handle_get_disk_usage(GUI_RPC_CONN& grc) {
     }
 
     dir_size(".", boinc_non_project, false);
+    msg_printf(NULL, MSG_INFO, "TalR handle_get_disk_usage Dir: %s Size: %d", ".", retval);
     dir_size("locale", size, false);
+    msg_printf(NULL, MSG_INFO, "TalR handle_get_disk_usage Dir: %s Site: %d", "locale", retval);
     boinc_non_project += size;
 #ifdef __APPLE__
     if (gstate.launched_by_manager) {

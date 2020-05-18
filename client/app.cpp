@@ -560,6 +560,7 @@ int ACTIVE_TASK::current_disk_usage(double& size) {
     char path[MAXPATHLEN];
 
     retval = dir_size(slot_dir, size);
+    msg_printf(NULL, MSG_INFO, "TalR current_disk_usage Dir: %s Size: %d", slot_dir, retval);
     if (retval) return retval;
     for (i=0; i<result->output_files.size(); i++) {
         fip = result->output_files[i].file_info;
