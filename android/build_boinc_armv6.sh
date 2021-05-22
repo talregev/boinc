@@ -39,9 +39,9 @@ export PATH="$TCBINARIES:$TCINCLUDES/bin:$PATH"
 export CC=arm-linux-androideabi-clang
 export CXX=arm-linux-androideabi-clang++
 export LD=arm-linux-androideabi-ld
-export CFLAGS="--sysroot=$TCSYSROOT -DANDROID -DDECLARE_TIMEZONE -Wall -I$TCINCLUDES/include -O3 -fomit-frame-pointer -fPIE -march=armv6 -mfloat-abi=softfp -mfpu=vfp -D__ANDROID_API__=16 -DARMV6"
-export CXXFLAGS="--sysroot=$TCSYSROOT -DANDROID -Wall -I$TCINCLUDES/include -funroll-loops -fexceptions -O3 -fomit-frame-pointer -fPIE -march=armv6 -mfloat-abi=softfp -mfpu=vfp -D__ANDROID_API__=16 -DARMV6"
-export LDFLAGS="$CONFIG_LDFLAGS -L$TCSYSROOT/usr/lib -L$TCINCLUDES/lib -llog -fPIE -pie -static-libstdc++ -march=armv6 -lc++_static -lc++abi -landroid_support -lunwind -latomic"
+export CFLAGS="--sysroot=$TCSYSROOT -DANDROID -DDECLARE_TIMEZONE -Wall -I$TCINCLUDES/include -fPIE -Os -march=armv5te -mtune=xscale -msoft-float -fno-integrated-as -mthumb -mfpu=vfp -D__ANDROID_API__=16 -DARMV6"
+export CXXFLAGS="--sysroot=$TCSYSROOT -DANDROID -Wall -I$TCINCLUDES/include -fPIE -Os -march=armv5te -mtune=xscale -msoft-float -fno-integrated-as -mthumb -mfpu=vfp -D__ANDROID_API__=16 -DARMV6"
+export LDFLAGS="$CONFIG_LDFLAGS -L$TCSYSROOT/usr/lib -L$TCINCLUDES/lib -llog -fPIE -pie -Wl,--exclude-libs,libunwind.a -static-libstdc++ -march=armv5te -lc++_static -lc++abi -landroid_support -lunwind -latomic"
 export GDB_CFLAGS="--sysroot=$TCSYSROOT -Wall -g -I$TCINCLUDES/include"
 
 # Prepare android toolchain and environment
