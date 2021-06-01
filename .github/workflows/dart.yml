@@ -1,4 +1,4 @@
-name: Dart
+name: Dart ubuntu
 on:
   push:
     branches: [ master ]
@@ -14,7 +14,8 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        type: [manager]
+        type: [linux android]
+
       fail-fast: false
     steps:
       - uses: actions/checkout@v2
@@ -42,7 +43,15 @@ jobs:
       
       - name: Install dependencies
         run: dart pub get
-      - name: Verify formatting
-        run: dart format — output=none — set-exit-if-changed .
-      - name: Analyze project source
-        run: dart analyze
+        
+      - name: Setting Linux Desktop
+        if: matrix.type == 'linux'
+        run: flutter config --enable-linux-desktop
+        
+      - name: Build Linux
+        if: matrix.type == 'linux'
+        run: cd dart/boinc/ && flutter build linux
+        
+      - name: Build Android
+        if: matrix.type == 'android'
+        run: cd dart/boinc/ && flutter build apk
