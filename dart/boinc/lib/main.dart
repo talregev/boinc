@@ -52,7 +52,9 @@ class MyHomePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    AppBar appBar = AppBar(title: Text(title));
+    var appBar = AppBar(title: Text(title));
+    var textColor = Theme.of(context).textTheme.bodyText1?.color;
+    var myAppContext = MyApp.of(context);
     return Scaffold(
       appBar: appBar,
       body: Center(
@@ -68,11 +70,11 @@ class MyHomePage extends StatelessWidget {
                 /// //////////////////////////////////////////////////////
                 /// Change theme & rebuild to show it using these buttons
                 ElevatedButton(
-                    onPressed: () => MyApp.of(context)?.changeTheme(ThemeMode.light),
-                    child: Text('Light')
+                  onPressed: () => myAppContext?.changeTheme(ThemeMode.light),
+                  child: Text('Light')
                 ),
                 ElevatedButton(
-                  onPressed: () => MyApp.of(context)?.changeTheme(ThemeMode.dark),
+                  onPressed: () => myAppContext?.changeTheme(ThemeMode.dark),
                   child: Text('Dark'),
                 ),
                 /// //////////////////////////////////////////////////////
@@ -99,7 +101,7 @@ class MyHomePage extends StatelessWidget {
               child: Text('Drawer Header'),
             )),
             ListTile(
-              leading: AvdPicture.asset("res/drawable/ic_baseline_list.xml", color: Theme.of(context).textTheme.bodyText1?.color),
+              leading: AvdPicture.asset("res/drawable/ic_baseline_list.xml", color: textColor),
               title: Text('Tasks'),
               onTap: () {
                 // Update the state of the app
@@ -109,7 +111,7 @@ class MyHomePage extends StatelessWidget {
               },
             ),
             ListTile(
-              leading: AvdPicture.asset('res/drawable/ic_baseline_email.xml', color: Theme.of(context).textTheme.bodyText1?.color),
+              leading: AvdPicture.asset('res/drawable/ic_baseline_email.xml', color: textColor),
               title: Text('Notices'),
               onTap: () {
                 // Update the state of the app
@@ -119,8 +121,10 @@ class MyHomePage extends StatelessWidget {
               },
             ),
             ListTile(
-              leading: Icon(Icons.account_tree),
-              //AvdPicture.asset('res/drawable/ic_projects.xml', color: Theme.of(context).textTheme.bodyText1?.color),
+              leading: Icon(Icons.account_tree,
+                color: textColor,
+              ),
+              //AvdPicture.asset('res/drawable/ic_projects.xml', color: textColor),
               title: Text('Projects'),
               onTap: () {
                 // Update the state of the app
@@ -130,7 +134,7 @@ class MyHomePage extends StatelessWidget {
               },
             ),
             ListTile(
-              leading: AvdPicture.asset('res/drawable/ic_baseline_add_box.xml', color: Theme.of(context).textTheme.bodyText1?.color),
+              leading: AvdPicture.asset('res/drawable/ic_baseline_add_box.xml', color: textColor),
               title: Text('Add Project'),
               onTap: () {
                 // Update the state of the app
@@ -140,7 +144,7 @@ class MyHomePage extends StatelessWidget {
               },
             ),
             ListTile(
-              leading: AvdPicture.asset('res/drawable/ic_baseline_settings.xml', color: Theme.of(context).textTheme.bodyText1?.color),
+              leading: AvdPicture.asset('res/drawable/ic_baseline_settings.xml', color: textColor),
               title: Text('Preference'),
               onTap: () {
                 // Update the state of the app
@@ -150,7 +154,7 @@ class MyHomePage extends StatelessWidget {
               },
             ),
             ListTile(
-              leading: AvdPicture.asset('res/drawable/ic_baseline_help.xml', color: Theme.of(context).textTheme.bodyText1?.color),
+              leading: AvdPicture.asset('res/drawable/ic_baseline_help.xml', color: textColor),
               title: Text('Help'),
               onTap: () {
                 // Update the state of the app
@@ -160,7 +164,7 @@ class MyHomePage extends StatelessWidget {
               },
             ),
             ListTile(
-              leading: AvdPicture.asset('res/drawable/ic_baseline_bug_report.xml', color: Theme.of(context).textTheme.bodyText1?.color),
+              leading: AvdPicture.asset('res/drawable/ic_baseline_bug_report.xml', color: textColor),
               title: Text('Report Issue'),
               onTap: () {
                 // Update the state of the app
@@ -170,7 +174,7 @@ class MyHomePage extends StatelessWidget {
               },
             ),
             ListTile(
-              leading: AvdPicture.asset('res/drawable/ic_baseline_warning.xml', color: Theme.of(context).textTheme.bodyText1?.color),
+              leading: AvdPicture.asset('res/drawable/ic_baseline_warning.xml', color: textColor),
               title: Text('Event log'),
               onTap: () {
                 // Update the state of the app
