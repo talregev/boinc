@@ -68,7 +68,7 @@ jobs:
         shell: cmd
         run: | 
           curl --output boinc_depends_win_vs2013.zip https://boinc.berkeley.edu/dl/boinc_depends/boinc_depends_win_vs2013.zip
-          7z.exe e boinc_depends_win_vs2013.zip -oc:%CD%\..
+          7z.exe e boinc_depends_win_vs2013.zip -o..
             
 
       - name: Build 2013
