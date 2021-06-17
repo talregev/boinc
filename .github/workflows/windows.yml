@@ -37,8 +37,17 @@ jobs:
           pathSource: ${{ github.workspace }}\temp\OpenCppCoverage-0.9.7.1.vsix
           pathTarget: ${{ github.workspace }}\temp\OpenCppCoverage
 
-      - name: Setup msbuild
-        uses: microsoft/setup-msbuild@v1
+      - name: Setup msbuild 2019
+        if: matrix.year == '2019'
+        uses: microsoft/setup-msbuild@v1.0.2
+        with:
+          vs-version: '[16.0,16.9)'
+
+      - name: Setup msbuild 2013
+        if: matrix.year == '2013'
+        uses: microsoft/setup-msbuild@v1.0.2
+        with:
+          vs-version: '[12.0,12.9)'
 
       - name: Fix vcpkg
         run: vcpkg.exe integrate remove
