@@ -15,7 +15,7 @@ jobs:
       matrix:
         platform: [x64]
         configuration: [Release]
-        year:[2019, 2013]
+        year: [2019, 2013]
     env:
       VCPKG_BINARY_SOURCES: 'clear;files,${{ github.workspace }}\3rdParty\buildCache\windows\vcpkgcache\,readwrite'
     steps:
@@ -67,8 +67,8 @@ jobs:
         if: success() && matrix.year == '2013'
         shell: cmd
         run: | 
-            curl --output boinc_depends_win_vs2013.zip https://boinc.berkeley.edu/dl/boinc_depends/boinc_depends_win_vs2013.zip
-            7z.exe e boinc_depends_win_vs2013.zip -oc:..\
+          curl --output boinc_depends_win_vs2013.zip https://boinc.berkeley.edu/dl/boinc_depends/boinc_depends_win_vs2013.zip
+          7z.exe e boinc_depends_win_vs2013.zip -oc:..\
             
 
       - name: Build 2013
@@ -76,7 +76,7 @@ jobs:
         run: msbuild win_build\boinc_vs2013.sln -p:Configuration=${{ matrix.configuration }} -p:Platform=${{ matrix.platform }}
 
       - name: Build 2019
-        if: matrix.year == '2019'
+        if: success() && matrix.year == '2019'
         run: msbuild win_build\boinc_vs2019.sln -p:Configuration=${{ matrix.configuration }} -p:Platform=${{ matrix.platform }} -p:VcpkgTripletConfig=ci -m
 
       - name: Run tests
