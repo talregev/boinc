@@ -63,22 +63,23 @@ jobs:
         run: |
           python deploy\manage_vcpkg_archive_cache.py download ${{ github.workspace }}\3rdParty\buildCache\windows\vcpkgcache\ windows "edu.berkeley.boinc.github.actions.build.vcpkg.binary.cache"
 
+      - name: Build 2019
+        if:  matrix.year == '2019'
+        run: msbuild win_build\boinc_vs2019.sln -p:Configuration=${{ matrix.configuration }} -p:Platform=${{ matrix.platform }} -p:VcpkgTripletConfig=ci -m
+
       - name: Download 2013 dependencies
-        if: success() && matrix.year == '2013'
+        if: matrix.year == '2013'
         shell: cmd
         run: | 
           curl --output boinc_depends_win_vs2013.zip https://boinc.berkeley.edu/dl/boinc_depends/boinc_depends_win_vs2013.zip
           7z.exe x boinc_depends_win_vs2013.zip -o%CD%\..
 
       - name: Build 2013
-        if:  matrix.year == '2013'
+        if: matrix.year == '2013'
         run: msbuild win_build\boinc_vs2013.sln -p:Configuration=${{ matrix.configuration }} -p:Platform=${{ matrix.platform }}
 
-      - name: Build 2019
-        if:  matrix.year == '2019'
-        run: msbuild win_build\boinc_vs2019.sln -p:Configuration=${{ matrix.configuration }} -p:Platform=${{ matrix.platform }} -p:VcpkgTripletConfig=ci -m
-
       - name: Run tests
+        if:  matrix.year == '2019'
         working-directory: win_build\Build\${{ matrix.platform }}\${{ matrix.configuration }}
         run: ${{ github.workspace }}\temp\OpenCppCoverage\OpenCppCoverage-x64\OpenCppCoverage.exe --cover_children --optimized_build --sources ${{ github.workspace }} --export_type=cobertura:cobertura.xml -- unittests.exe --gtest_output=xml:gtest.xml
 
