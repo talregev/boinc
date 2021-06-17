@@ -41,13 +41,13 @@ jobs:
         if: matrix.year == '2019'
         uses: microsoft/setup-msbuild@v1.0.2
         with:
-          vs-version: '[16.0,16.9)'
+          vs-version: '16.10.2'
 
       - name: Setup msbuild 2013
         if: matrix.year == '2013'
         uses: microsoft/setup-msbuild@v1.0.2
         with:
-          vs-version: '[12.0,12.9)'
+          vs-version: '12.0.40629.0'
 
       - name: Fix vcpkg
         run: vcpkg.exe integrate remove
