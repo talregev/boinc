@@ -15,7 +15,8 @@ jobs:
       matrix:
         platform: [x64]
         configuration: [Release]
-        year: [2019]
+        year: [2013,2019]
+      fail-fast: false
     env:
       VCPKG_BINARY_SOURCES: 'clear;files,${{ github.workspace }}\3rdParty\buildCache\windows\vcpkgcache\,readwrite'
     steps:
@@ -36,12 +37,28 @@ jobs:
         with:
           pathSource: ${{ github.workspace }}\temp\OpenCppCoverage-0.9.7.1.vsix
           pathTarget: ${{ github.workspace }}\temp\OpenCppCoverage
+        
+      - name: Setup msbuild
+        uses: microsoft/setup-msbuild@v1
 
-      - name: Setup msbuild 2019
-        if: matrix.year == '2019'
-        uses: microsoft/setup-msbuild@v1.0.2
+      - name: Download vs2013 iso
+        uses: suisei-cn/actions-download-file@v1
+        id: DownloadVS2013Iso
+        if: matrix.year == '2013'
         with:
-          vs-version: '16.10.2'
+          url: "http://download.microsoft.com/download/A/F/9/AF95E6F8-2E6E-49D0-A48A-8E918D7FD768/vs2013.5.iso"
+          target: ${{ github.workspace }}\temp\
+
+      - name: Unzip vs2013 iso
+        uses: DuckSoft/extract-7z-action@v1.0
+        if: matrix.year == '2013'
+        with:
+          pathSource: ${{ github.workspace }}\temp\vs2013.5.iso
+          pathTarget: ${{ github.workspace }}\temp\vs2013.5          
+
+      - name: Install vs 2013
+        if: matrix.year == '2013'
+        run: ${{ github.workspace }}\temp\vs2013.5\VS2013.5.EXE --installPath "C:\Program Files (x86)\Microsoft Visual Studio\2013\BuildTools"
 
       # - name: Setup msbuild 2013
       #   if: matrix.year == '2013'
@@ -76,16 +93,16 @@ jobs:
         if:  matrix.year == '2019'
         run: msbuild win_build\boinc_vs2019.sln -p:Configuration=${{ matrix.configuration }} -p:Platform=${{ matrix.platform }} -p:VcpkgTripletConfig=ci -m
 
-      # - name: Download 2013 dependencies
-      #   if: matrix.year == '2013'
-      #   shell: cmd
-      #   run: | 
-      #     curl --output boinc_depends_win_vs2013.zip https://boinc.berkeley.edu/dl/boinc_depends/boinc_depends_win_vs2013.zip
-      #     7z.exe x boinc_depends_win_vs2013.zip -o%CD%\..
+       - name: Download 2013 dependencies
+         if: matrix.year == '2013'
+         shell: cmd
+         run: |
+           curl --output boinc_depends_win_vs2013.zip https://boinc.berkeley.edu/dl/boinc_depends/boinc_depends_win_vs2013.zip
+           7z.exe x boinc_depends_win_vs2013.zip -o%CD%\..
 
-      # - name: Build 2013
-      #   if: matrix.year == '2013'
-      #   run: msbuild win_build\boinc_vs2013.sln -p:Configuration=${{ matrix.configuration }} -p:Platform=${{ matrix.platform }}
+       - name: Build 2013
+         if: matrix.year == '2013'
+         run: msbuild win_build\boinc_vs2013.sln -p:Configuration=${{ matrix.configuration }} -p:Platform=${{ matrix.platform }}
 
       - name: Run tests
         if:  matrix.year == '2019'
