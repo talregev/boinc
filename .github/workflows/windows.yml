@@ -57,7 +57,7 @@ jobs:
 
       - name: Install vs 2013
         if: matrix.year == '2013'
-        run: ${{ github.workspace }}\temp\vs2013.5\VS2013.5.EXE --installPath "C:\Program Files (x86)\Microsoft Visual Studio\2013\BuildTools"
+        run: ${{ github.workspace }}\temp\vs2013.5\VS2013.5.EXE --installPath "C:\Program Files (x86)\Microsoft Visual Studio\2013\BuildTools" --quiet --wait --norestart
 
       # - name: Setup msbuild 2013
       #   if: matrix.year == '2013'
