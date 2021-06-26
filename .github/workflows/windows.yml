@@ -83,7 +83,7 @@ jobs:
           pip install boto3
 
       - name: Download vcpkg binary cache
-        if: ${{ success() }}
+        if: success() && matrix.year == '2019'
         shell: cmd
         run: |
           python deploy\manage_vcpkg_archive_cache.py download ${{ github.workspace }}\3rdParty\buildCache\windows\vcpkgcache\ windows "edu.berkeley.boinc.github.actions.build.vcpkg.binary.cache"
@@ -96,6 +96,8 @@ jobs:
         if: matrix.year == '2013'
         shell: cmd
         run: |
+          del ${{ github.workspace }}\temp\vs2013.5.iso
+          del /q/s ${{ github.workspace }}\temp\vs2013.5
           curl --output boinc_depends_win_vs2013.zip https://boinc.berkeley.edu/dl/boinc_depends/boinc_depends_win_vs2013.zip
           7z.exe x boinc_depends_win_vs2013.zip -o%CD%\..
 
