@@ -43,15 +43,17 @@ jobs:
 
       - name: Download vs2013 iso
         if: matrix.year == '2013'
-        run: curl.exe --output ${{ github.workspace }}\temp\vs2013.5.iso  http://download.microsoft.com/download/A/F/9/AF95E6F8-2E6E-49D0-A48A-8E918D7FD768/vs2013.5.iso
+        run: |
+            curl.exe --output ${{ github.workspace }}\temp\vs2013.5.iso  http://download.microsoft.com/download/A/F/9/AF95E6F8-2E6E-49D0-A48A-8E918D7FD768/vs2013.5.iso
+            7z.exe x ${{ github.workspace }}\temp\vs2013.5.iso -o${{ github.workspace }}\temp\vs2013.5 
 
 
-      - name: Unzip vs2013 iso
-        uses: DuckSoft/extract-7z-action@v1.0
-        if: matrix.year == '2013'
-        with:
-          pathSource: ${{ github.workspace }}\temp\vs2013.5.iso
-          pathTarget: ${{ github.workspace }}\temp\vs2013.5          
+#      - name: Unzip vs2013 iso
+#        uses: DuckSoft/extract-7z-action@v1.0
+#        if: matrix.year == '2013'
+#        with:
+#          pathSource: ${{ github.workspace }}\temp\vs2013.5.iso
+#          pathTarget: ${{ github.workspace }}\temp\vs2013.5
 
       - name: Install vs 2013
         if: matrix.year == '2013'
