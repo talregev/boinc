@@ -1,0 +1,3 @@
+    - assets/linux/boinc
+    - assets/linux/boinccmd
+    - assets/linux/ca-bundle.crt
