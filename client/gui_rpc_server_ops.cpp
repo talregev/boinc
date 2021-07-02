@@ -1648,15 +1648,24 @@ static bool authenticated_request(char* buf) {
     long auth_seqno;
     char auth_hash[256];
     const char* p = strcasestr(buf, "Auth-ID: ");
-    if (!p) return false;
+    if (!p) {
+        p = strstr(buf, "auth-id: ");
+        if (!p) return false;
+    }
     int n = sscanf(p+strlen("Auth-ID: "), "%d", &auth_id);
     if (n != 1) return false;
     p = strcasestr(buf, "Auth-Seqno: ");
-    if (!p) return false;
+    if (!p) {
+        p = strstr(buf, "auth-seqno: ");
+        if (!p) return false;
+    }
     n = sscanf(p+strlen("Auth-Seqno: "), "%ld", &auth_seqno);
     if (n != 1) return false;
     p = strcasestr(buf, "Auth-Hash: ");
-    if (!p) return false;
+    if (!p) {
+        p = strstr(buf, "auth-hash: ");
+        if (!p) return false;
+    }
     n = sscanf(p+strlen("Auth-Hash: "), "%64s", auth_hash);
     if (n != 1) return false;
     char* request = strstr(buf, HTTP_HEADER_DELIM);
@@ -1900,7 +1909,10 @@ static int handle_rpc_aux(GUI_RPC_CONN& grc) {
 static bool is_http_post_request(char* buf) {
     if (strstr(buf, "POST") != buf) return false;
     char* p = strstr(buf, "Content-Length: ");
-    if (!p) return false;
+    if (!p) {
+        p = strstr(buf, "content-length: ");
+        if(!p) return false;
+    }
     p += strlen("Content-Length: ");
     int n = atoi(p);
     p = strstr(p, HTTP_HEADER_DELIM);
