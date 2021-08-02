@@ -1,16 +1,28 @@
 name: 'Test Report'
 on:
   workflow_run:
-    workflows: ['Android']                # runs after Android workflow
+    workflows: [Android, Linux]      # runs after Android workflow
     types:
       - completed
 jobs:
   report:
     runs-on: ubuntu-latest
     steps:
-    - uses: dorny/test-reporter@v1
+    - name: Android report
+      uses: dorny/test-reporter@v1
+      if: workflows == "Android"
       with:
-        artifact: android_junit_result    # artifact name
-        name: Junit Android Tests         # Name of the check run which will be created
-        path: '*.xml'                     # Path to test results (inside artifact .zip)
-        reporter: java-junit  
+        artifact: (*.)_test_results  # artifact name
+        name: $1 Tests Report        # Name of the check run which will be created
+        path: '*.xml'                # Path to test results (inside artifact .zip)
+        reporter: java-junit
+
+    - name: Linux report
+      uses: dorny/test-reporter@v1
+      if: workflows == "Linux"
+      with:
+        artifact: (*.)_test_results  # artifact name
+        name: $1 Tests Report        # Name of the check run which will be created
+        path: '*.xml'                # Path to test results (inside artifact .zip)
+        reporter: java-junit
+
