@@ -8,18 +8,7 @@ jobs:
   report:
     runs-on: ubuntu-latest
     steps:
-    - name: Android report
       uses: dorny/test-reporter@v1
-      if: workflows == "Android"
-      with:
-        artifact: (*.)_test_results  # artifact name
-        name: $1 Tests Report        # Name of the check run which will be created
-        path: '*.xml'                # Path to test results (inside artifact .zip)
-        reporter: java-junit
-
-    - name: Linux report
-      uses: dorny/test-reporter@v1
-      if: workflows == "Linux"
       with:
         artifact: (*.)_test_results  # artifact name
         name: $1 Tests Report        # Name of the check run which will be created
