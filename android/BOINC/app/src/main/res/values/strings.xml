@@ -99,6 +99,7 @@
     <!-- tab names -->
     <string name="tab_status">Status</string>
     <string name="tab_projects">Projects</string>
+    <string name="tab_storage">Storage</string>
     <string name="tab_tasks">Tasks</string>
     <string name="tab_transfers">Transfers</string>
     <string name="tab_preferences">Preferences</string>

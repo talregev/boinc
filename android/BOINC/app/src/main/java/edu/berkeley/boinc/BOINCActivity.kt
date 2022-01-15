@@ -31,7 +31,6 @@ import android.content.res.Configuration
 import android.os.Bundle
 import android.os.IBinder
 import android.os.RemoteException
-import android.util.Log
 import android.view.KeyEvent
 import android.view.Menu
 import android.view.MenuItem
@@ -267,6 +266,10 @@ class BOINCActivity : AppCompatActivity() {
                     ft.replace<ProjectsFragment>(R.id.frame_container)
                     fragmentChanges = true
                 }
+                R.string.tab_storage -> {
+                    ft.replace<ProjectsFragment>(R.id.frame_container)
+                    fragmentChanges = true
+                }
                 R.string.menu_help -> startActivity(Intent(Intent.ACTION_VIEW, "https://boinc.berkeley.edu/wiki/BOINC_Help".toUri()))
                 R.string.menu_report_issue -> startActivity(Intent(Intent.ACTION_VIEW, "https://boinc.berkeley.edu/trac/wiki/ReportBugs".toUri()))
                 R.string.menu_about -> {
@@ -377,15 +380,15 @@ class BOINCActivity : AppCompatActivity() {
             true
         } else when (item.itemId) {
             R.id.run_mode -> {
-                when {
-                    item.title == application.getString(R.string.menu_run_mode_disable) -> {
+                when (item.title) {
+                    application.getString(R.string.menu_run_mode_disable) -> {
                         Logging.logDebug(Logging.Category.USER_ACTION, "run mode: disable")
 
                         lifecycleScope.launch {
                             writeClientMode(RUN_MODE_NEVER)
                         }
                     }
-                    item.title == application.getString(R.string.menu_run_mode_enable) -> {
+                    application.getString(R.string.menu_run_mode_enable) -> {
                         Logging.logDebug(Logging.Category.USER_ACTION, "run mode: enable")
 
                         lifecycleScope.launch {

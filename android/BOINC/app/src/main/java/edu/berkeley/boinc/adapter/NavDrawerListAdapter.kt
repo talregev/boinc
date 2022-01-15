@@ -299,6 +299,7 @@ class NavDrawerListAdapter(val context: Context) : BaseAdapter() {
                 R.drawable.ic_baseline_add_box, isCounterVisible = false, isSubItem = true
             )
         )
+        navDrawerItems.add(NavDrawerItem(R.string.tab_storage, R.drawable.ic_baseline_storage))
         navDrawerItems.add(
             NavDrawerItem(
                 R.string.tab_preferences,
