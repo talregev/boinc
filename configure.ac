@@ -1286,7 +1286,7 @@ else
     CLIENTGUIFLAGS="${CLIENTGUIFLAGS} -DNDEBUG"
 fi
 
-CLIENTGUILIBS="${WX_LIBS}"
+CLIENTGUILIBS="${WX_LIBS} -lX11"
 
 if test "${enable_client_release}" = "yes" ; then
    if test "x${WX_LIBS_STATIC}" = "x" ; then
