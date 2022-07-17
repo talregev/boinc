@@ -30,6 +30,8 @@
 # --no_shared_headers will build targets individually instead of in one call of BuildMacBOINC.sh (NOT recommended)
 
 # check working directory because the script needs to be called like: ./mac_build/buildMacBOINC-CI.sh
+set -e
+
 if [ ! -d "mac_build" ]; then
     echo "start this script in the source root directory"
     exit 1
@@ -257,3 +259,28 @@ fi
 echo "Building ${target}...done"
 
 cd ..
+
+echo "Testing libs and binaries for univaral build."
+echo ""
+
+binaries_libs_list="*.a boinc switcher gfx_switcher boincscr setprojectgrp boinccmd SetUpSecurity AddRemoveUser BOINCManager PostInstall BOINCSaver *Installer Uninstall*"
+folders_list="3rdParty/buildCache/mac/lib mac_build/build/Deployment"
+
+for object in $binaries_libs_list; do
+    echo "Search for: $object"
+    found_list=$(find $folders_list -type f -name "$object")
+    if [ -z "$found_list" ]; then
+        echo "ERROR: $object not found"
+        exit 1
+    fi
+    find $folders_list -type f -name "$object" -exec sh -c '
+    for f do
+        echo "Test : $f"
+        if ! lipo "$f" -verify_arch x86_64 arm64; then
+            echo "Fail: $(basename $f) is not universal"
+            lipo -info "$f"
+            exit 1
+        fi         
+    done
+    ' sh {} +; 
+done

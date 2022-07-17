@@ -27,7 +27,7 @@ jobs:
     steps:
       - uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: '12.5.1'
+          xcode-version: '14.2.0'
 
       - uses: actions/checkout@v2
 
@@ -58,6 +58,10 @@ jobs:
       - name: libs cmake
         if: matrix.type == 'libs-cmake'
         run: osx/ci_build_libs_cmake.sh
+
+      - name: test universal cmake
+        if: success() && matrix.type == 'libs-cmake'
+        run: ./osx/test_universal.sh        
 
       - name: Prepare logs on failure
         if: ${{ failure() }}
