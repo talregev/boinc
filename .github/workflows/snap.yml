@@ -1,0 +1,46 @@
+name: Docker
+on:
+  push:
+    branches:
+    - master
+  pull_request:
+    branches:
+    - master
+  schedule:
+  - cron:  '10 12 * * 0'
+
+concurrency: 
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+env:
+  AWS_ACCESS_KEY_ID: ${{ secrets.S3_ACCESS_KEY }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_KEY }}
+  AWS_DEFAULT_REGION: us-west-2
+
+jobs:
+  docker_build:
+    name: snap-${{ matrix.type }}-build
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - type: arm
+          architecture: linux/arm/v7
+          snap_file: boinc_armhf.snap
+        - type: arm64
+          architecture: linux/arm64
+          snap_file: boinc_arm64.snap
+        - type: x64
+          architecture: linux/amd64
+          snap_file: boinc_amd64.snap
+    container:
+      image: diddledan/snapcraft:core20
+      options: --privileged --platform ${{ matrix.architecture }} --restart always
+    steps:
+
+    - name: tal
+      if: success()
+      run: |
+        echo tal
