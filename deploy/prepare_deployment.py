@@ -205,9 +205,7 @@ wasm_client_debug_folder_list = [
 ]
 
 snap_list = [
-    './boinc_armhf.snap',
-    './boinc_arm64.snap',
-    './boinc_amd64.snap',
+    './boinc_*.snap',
 ]
 
 logs_list = [
