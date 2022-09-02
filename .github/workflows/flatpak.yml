@@ -1,0 +1,104 @@
+name: Flatpak
+on:
+  push:
+    branches:
+    - master
+  pull_request:
+    branches:
+    - master
+  schedule:
+  - cron:  '10 12 * * 0'
+
+concurrency: 
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+env:
+  AWS_ACCESS_KEY_ID: ${{ secrets.S3_ACCESS_KEY }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_KEY }}
+  AWS_DEFAULT_REGION: us-west-2
+
+jobs:
+  flatpak:
+    name: flatpak-${{ matrix.type }}-build
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - type: x64
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Install dependencies
+      run: |
+        sudo apt -qq update
+        sudo apt install -y p7zip-full flatpak flatpak-builder
+
+    # - name: Cache dependencies
+    #   uses: actions/cache@v2
+    #   with:
+    #     path: |
+    #       3rdParty/buildCache
+    #       !3rdParty/buildCache/linux/vcpkgcache/
+    #     key: flatpak-${{ matrix.type }}-${{ hashFiles('3rdParty/vcpkg_ports/aws_version.txt', '3rdParty/vcpkg_ports/ninja_version.txt') }}
+
+    - name: Running from origin repo
+      if: ${{ success() && env.AWS_ACCESS_KEY_ID != 0 && env.AWS_SECRET_ACCESS_KEY != 0 }}
+      run: |
+        echo "VCPKG_BINARY_SOURCES=clear;x-aws,s3://vcpkg.cache.boinc/,readwrite" >> $GITHUB_ENV
+
+    - name: Running from fork
+      if: ${{ success() && (env.AWS_ACCESS_KEY_ID == 0 || env.AWS_SECRET_ACCESS_KEY == 0) }}
+      run: |
+        echo "VCPKG_BINARY_SOURCES=clear;x-aws-config,no-sign-request;x-aws,s3://vcpkg.cache.boinc/,read" >> $GITHUB_ENV
+    
+    - name: Configure flatpak
+      if: success()
+      run: |
+        sudo flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+        sudo flatpak install -y flathub org.gnome.Sdk/x86_64/42
+        sudo flatpak install -y flathub org.gnome.Platform/x86_64/42
+    
+    - name: build boinc flatpak
+      if: success()
+      run: flatpak-builder build-dir edu.berkeley.BOINC.yml
+
+    # - name: cache aws-cli and ninja
+    #   if: success()
+    #   run: |
+    #     if [ ! -d "3rdParty/buildCache/linux/awscli/" ]; then
+    #       echo "Caching aws-cli"
+    #       mkdir -p 3rdParty/buildCache/linux/awscli/
+    #       sudo chown -R $USER parts/boinc/build/3rdParty/buildCache/linux/awscli/
+    #       cp -R parts/boinc/build/3rdParty/buildCache/linux/awscli/ 3rdParty/buildCache/linux/
+    #     fi
+    #     if [ ! -d "3rdParty/buildCache/linux/ninja/" ]; then
+    #       echo "Caching ninja"
+    #       mkdir -p 3rdParty/buildCache/linux/ninja/
+    #       sudo chown -R $USER parts/boinc/build/3rdParty/buildCache/linux/ninja/
+    #       cp -R parts/boinc/build/3rdParty/buildCache/linux/ninja/ 3rdParty/buildCache/linux/
+    #     fi
+
+    - name: Prepare logs on failure
+      if: ${{ failure() }}
+      run: python ./deploy/prepare_deployment.py logs
+
+    - name: Upload logs on failure
+      if: ${{ failure() }}
+      uses: actions/upload-artifact@v2
+      with:
+        name: snap_logs_${{ github.event.pull_request.head.sha }}
+        path: deploy/logs.7z
+
+    - name: Prepare artifacts for deploy
+      if: success() 
+      run: python ./deploy/prepare_deployment.py linux_snap
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v2
+      if: success()
+      with:
+        name: linux_snap_${{ matrix.type }}_${{ github.event.pull_request.head.sha }}
+        path: deploy/linux_snap.7z
