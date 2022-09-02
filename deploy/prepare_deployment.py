@@ -210,6 +210,10 @@ snap_list = [
     './boinc_amd64.snap',
 ]
 
+flatpak_list = [
+    './boinc.flatpak',
+]
+
 logs_list = [
     'config.log',
     '3rdParty/wasm/vcpkg/buildtrees/*.log',
@@ -293,6 +297,9 @@ def prepare_wasm_client_debug(target_directory):
 def prepare_linux_snap(target_directory):
     prepare_7z_archive('linux_snap', target_directory, snap_list)
 
+def prepare_linux_flatpak(target_directory):
+    prepare_7z_archive('linux_flatpak', target_directory, flatpak_list)
+
 def prepare_logs(target_directory):
     prepare_7z_archive('logs', target_directory, logs_list)
 
@@ -316,6 +323,7 @@ boinc_types = {
     'wasm_client': prepare_wasm_client,
     'wasm_client-debug': prepare_wasm_client_debug,
     'linux_snap': prepare_linux_snap,
+    'linux_flatpak': prepare_linux_flatpak,
     'logs': prepare_logs,
 }
 
