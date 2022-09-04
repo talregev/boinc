@@ -41,6 +41,7 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt -qq update
+        sudo add-apt-repository ppa:flatpak/stable -y
         sudo apt install -y p7zip-full flatpak flatpak-builder qemu-system-arm qemu-user-static
 
     - name: Restart systemd-binfmt.service
@@ -60,42 +61,18 @@ jobs:
       if: success()
       run: |
         sudo flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
-        sudo flatpak install -y flathub org.gnome.Sdk/${{ matrix.arch }}/42 flathub org.gnome.Platform/${{ matrix.arch }}/42
+        sudo flatpak install -y flathub org.gnome.Sdk/${{ matrix.arch }}/42 org.gnome.Platform/${{ matrix.arch }}/42
     
     - name: Build boinc flatpak
       if: success()
       run: |
         flatpak-builder --arch ${{ matrix.arch }} build-dir edu.berkeley.BOINC.yml
-        flatpak build-export export build-dir
-        flatpak build-bundle export ${{ matrix.flatpak_file }} edu.berkeley.BOINC
-
-    # - name: Install boinc flatpak
-    #   if: success()
-    #   run: sudo flatpak install -y --bundle boinc.flatpak
+        flatpak build-export --arch ${{ matrix.arch }} export build-dir
+        flatpak build-bundle --arch ${{ matrix.arch }} export ${{ matrix.flatpak_file }} edu.berkeley.BOINC
 
     - name: Install boinc flatpak
       if: success()
-      run: |
-        docker run \
-          --rm \
-          --tty \
-          --privileged \
-          --volume $PWD:$PWD \
-          --workdir $PWD \
-          --platform "${{ matrix.architecture }}" \
-          --env VCPKG_BINARY_SOURCES=$VCPKG_BINARY_SOURCES \
-          --env AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID \
-          --env AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY \
-          --env AWS_DEFAULT_REGION=$AWS_DEFAULT_REGION \
-          ubuntu:focal \
-          bash -c " \
-            export DEBIAN_FRONTEND=noninteractive; export TZ=Etc/UTC; \
-            apt -qq update && \
-            apt install -y flatpak flatpak-builder && \
-            flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo && \
-            flatpak install -y flathub org.gnome.Platform//42 && \
-            flatpak install -y --bundle ${{ matrix.flatpak_file }} \
-          "
+      run: sudo flatpak install -y --arch ${{ matrix.arch }} --bundle ${{ matrix.flatpak_file }}
 
     - name: Prepare logs on failure
       if: ${{ failure() }}
