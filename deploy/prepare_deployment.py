@@ -19,26 +19,14 @@
 import os
 import sys
 
-linux_client_list = [
-    './client/boinc',
-    './client/boinccmd'
-]
+linux_client_list = ['./client/boinc', './client/boinccmd']
 
 linux_apps_list = [
-    './samples/condor/boinc_gahp',
-    './samples/example_app/uc2',
-    './samples/example_app/ucn',
-    './samples/example_app/uc2_graphics',
-    './samples/example_app/slide_show',
-    './samples/multi_thread/multi_thread',
-    './samples/sleeper/sleeper',
-    './samples/vboxmonitor/vboxmonitor',
-    './samples/vboxwrapper/vboxwrapper',
-    './samples/worker/worker',
-    './samples/wrapper/wrapper',
-    './samples/openclapp/openclapp',
-    './samples/wrappture/wrappture_example',
-    './samples/wrappture/fermi'
+    './samples/condor/boinc_gahp', './samples/example_app/uc2', './samples/example_app/ucn',
+    './samples/example_app/uc2_graphics', './samples/example_app/slide_show', './samples/multi_thread/multi_thread',
+    './samples/sleeper/sleeper', './samples/vboxmonitor/vboxmonitor', './samples/vboxwrapper/vboxwrapper',
+    './samples/worker/worker', './samples/wrapper/wrapper', './samples/openclapp/openclapp',
+    './samples/wrappture/wrappture_example', './samples/wrappture/fermi'
 ]
 
 linux_manager_list = [
@@ -47,22 +35,13 @@ linux_manager_list = [
     'locale/*/*.mo',
 ]
 
-mingw_apps_list = [
-    './lib/wrapper.exe'
-]
+mingw_apps_list = ['./lib/wrapper.exe']
 
 mingw_apps_vcpkg_list = [
-    './samples/condor/boinc_gahp.exe',
-    './samples/example_app/uc2.exe',
-    './samples/example_app/ucn.exe',
-    './samples/example_app/uc2_graphics.exe',
-    './samples/example_app/slide_show.exe',
-    './samples/multi_thread/multi_thread.exe',
-    './samples/sleeper/sleeper.exe',
-    './samples/worker/worker.exe',
-    './samples/wrapper/wrapper.exe',
-    './samples/wrappture/wrappture_example.exe',
-    './samples/wrappture/fermi.exe'
+    './samples/condor/boinc_gahp.exe', './samples/example_app/uc2.exe', './samples/example_app/ucn.exe',
+    './samples/example_app/uc2_graphics.exe', './samples/example_app/slide_show.exe',
+    './samples/multi_thread/multi_thread.exe', './samples/sleeper/sleeper.exe', './samples/worker/worker.exe',
+    './samples/wrapper/wrapper.exe', './samples/wrappture/wrappture_example.exe', './samples/wrappture/fermi.exe'
 ]
 
 android_manager_generic_list = [
@@ -138,44 +117,26 @@ android_apps_list = [
 ]
 
 windows_apps_list = [
-    './win_build/Build/x64/Release/htmlgfx*.exe',
-    './win_build/Build/x64/Release/wrapper*.exe',
-    './win_build/Build/x64/Release/vboxwrapper*.exe',
-    './win_build/Build/x64/Release/boincsim.exe',
-    './win_build/Build/x64/Release/slide_show.exe',
-    './win_build/Build/x64/Release/example*.exe',
-    './win_build/Build/x64/Release/worker*.exe',
-    './win_build/Build/x64/Release/sleeper*.exe',
-    './win_build/Build/x64/Release/boinclog.exe',
-    './win_build/Build/x64/Release/multi_thread*.exe',
-    './win_build/Build/x64/Release/test*.exe',
-    './win_build/Build/x64/Release/wrappture*.exe',
-    './win_build/Build/ARM64/Release/htmlgfx*.exe',
-    './win_build/Build/ARM64/Release/wrapper*.exe',
-    './win_build/Build/ARM64/Release/vboxwrapper*.exe',
-    './win_build/Build/ARM64/Release/boincsim.exe',
-    './win_build/Build/ARM64/Release/slide_show.exe',
-    './win_build/Build/ARM64/Release/example*.exe',
-    './win_build/Build/ARM64/Release/worker*.exe',
-    './win_build/Build/ARM64/Release/sleeper*.exe',
-    './win_build/Build/ARM64/Release/boinclog.exe',
-    './win_build/Build/ARM64/Release/multi_thread*.exe',
-    './win_build/Build/ARM64/Release/test*.exe',
-    './win_build/Build/ARM64/Release/wrappture*.exe'
+    './win_build/Build/x64/Release/htmlgfx*.exe', './win_build/Build/x64/Release/wrapper*.exe',
+    './win_build/Build/x64/Release/vboxwrapper*.exe', './win_build/Build/x64/Release/boincsim.exe',
+    './win_build/Build/x64/Release/slide_show.exe', './win_build/Build/x64/Release/example*.exe',
+    './win_build/Build/x64/Release/worker*.exe', './win_build/Build/x64/Release/sleeper*.exe',
+    './win_build/Build/x64/Release/boinclog.exe', './win_build/Build/x64/Release/multi_thread*.exe',
+    './win_build/Build/x64/Release/test*.exe', './win_build/Build/x64/Release/wrappture*.exe',
+    './win_build/Build/ARM64/Release/htmlgfx*.exe', './win_build/Build/ARM64/Release/wrapper*.exe',
+    './win_build/Build/ARM64/Release/vboxwrapper*.exe', './win_build/Build/ARM64/Release/boincsim.exe',
+    './win_build/Build/ARM64/Release/slide_show.exe', './win_build/Build/ARM64/Release/example*.exe',
+    './win_build/Build/ARM64/Release/worker*.exe', './win_build/Build/ARM64/Release/sleeper*.exe',
+    './win_build/Build/ARM64/Release/boinclog.exe', './win_build/Build/ARM64/Release/multi_thread*.exe',
+    './win_build/Build/ARM64/Release/test*.exe', './win_build/Build/ARM64/Release/wrappture*.exe'
 ]
 
 windows_client_list = [
-    './win_build/Build/x64/Release/boinc.exe',
-    './win_build/Build/x64/Release/boincsvcctrl.exe',
-    './win_build/Build/x64/Release/boinccmd.exe',
-    './win_build/Build/x64/Release/boincscr.exe',
-    './win_build/Build/x64/Release/boinc.scr',
-    './win_build/Build/ARM64/Release/boinc.exe',
-    './win_build/Build/ARM64/Release/boincsvcctrl.exe',
-    './win_build/Build/ARM64/Release/boinccmd.exe',
-    './win_build/Build/ARM64/Release/boincscr.exe',
-    './win_build/Build/ARM64/Release/boinc.scr',
-    './curl/ca-bundle.crt'
+    './win_build/Build/x64/Release/boinc.exe', './win_build/Build/x64/Release/boincsvcctrl.exe',
+    './win_build/Build/x64/Release/boinccmd.exe', './win_build/Build/x64/Release/boincscr.exe',
+    './win_build/Build/x64/Release/boinc.scr', './win_build/Build/ARM64/Release/boinc.exe',
+    './win_build/Build/ARM64/Release/boincsvcctrl.exe', './win_build/Build/ARM64/Release/boinccmd.exe',
+    './win_build/Build/ARM64/Release/boincscr.exe', './win_build/Build/ARM64/Release/boinc.scr', './curl/ca-bundle.crt'
 ]
 
 windows_manager_list = [
@@ -204,6 +165,16 @@ wasm_client_debug_folder_list = [
     'client/boinc_client.wasm',
 ]
 
+snap_list = [
+    './boinc_armhf.snap',
+    './boinc_arm64.snap',
+    './boinc_amd64.snap',
+]
+
+flatpak_list = [
+    './boinc_*.flatpak',
+]
+
 logs_list = [
     'config.log',
     '3rdParty/wasm/vcpkg/buildtrees/*.log',
@@ -216,76 +187,106 @@ logs_list = [
     'mac_build/xcodebuild_*.log',
 ]
 
+
 def prepare_7z_archive(archive_name, target_directory, files_list):
     os.makedirs(target_directory, exist_ok=True)
     archive_path = os.path.join(target_directory, archive_name + '.7z')
     command = f'7z a -t7z -mx=9 {archive_path} {" ".join(files_list)}'
     os.system(command)
 
+
 def help():
     print('Usage: python preprare_deployment.py BOINC_TYPE')
     print(f'BOINC_TYPE : [{" | ".join(boinc_types.keys())}]')
 
+
 def prepare_linux_client(target_directory):
     prepare_7z_archive('linux_client', target_directory, linux_client_list)
+
 
 def prepare_linux_client_vcpkg(target_directory):
     prepare_7z_archive('linux_client-vcpkg', target_directory, linux_client_list)
 
+
 def prepare_linux_apps(target_directory):
     prepare_7z_archive('linux_apps', target_directory, linux_apps_list)
+
 
 def prepare_linux_apps_vcpkg(target_directory):
     prepare_7z_archive('linux_apps-vcpkg', target_directory, linux_apps_list)
 
+
 def prepare_linux_manager_with_webview(target_directory):
     prepare_7z_archive('linux_manager-with-webview', target_directory, linux_manager_list)
+
 
 def prepare_linux_manager_with_webview_vcpkg(target_directory):
     prepare_7z_archive('linux_manager-with-webview-vcpkg', target_directory, linux_manager_list)
 
+
 def prepare_linux_manager_without_webview(target_directory):
     prepare_7z_archive('linux_manager-without-webview', target_directory, linux_manager_list)
+
 
 def prepare_win_apps_mingw(target_directory):
     prepare_7z_archive('win_apps-mingw', target_directory, mingw_apps_list)
 
+
 def prepare_win_apps_mingw_vcpkg(target_directory):
     prepare_7z_archive('win_apps-mingw-vcpkg', target_directory, mingw_apps_vcpkg_list)
+
 
 def prepare_android_manager(target_directory):
     prepare_7z_archive('android_manager', target_directory, android_manager_generic_list)
     prepare_7z_archive('android_manager_xiaomi', target_directory, android_manager_xiaomi_list)
     prepare_7z_archive('android_manager_armv6', target_directory, android_manager_armv6_list)
 
+
 def prepare_android_manager_vcpkg(target_directory):
     prepare_7z_archive('android_manager-vcpkg', target_directory, android_manager_generic_list)
     prepare_7z_archive('android_manager-vcpkg_xiaomi', target_directory, android_manager_xiaomi_list)
     prepare_7z_archive('android_manager-vcpkg_armv6', target_directory, android_manager_armv6_list)
 
+
 def prepare_android_apps(target_directory):
     prepare_7z_archive('android_apps', target_directory, android_apps_list)
+
 
 def prepare_android_apps_vcpkg(target_directory):
     prepare_7z_archive('android_apps-vcpkg', target_directory, android_apps_list)
 
+
 def prepare_win_apps(target_directory):
     prepare_7z_archive('win_apps', target_directory, windows_apps_list)
+
 
 def prepare_win_client(target_directory):
     prepare_7z_archive('win_client', target_directory, windows_client_list)
 
+
 def prepare_win_manager(target_directory):
     prepare_7z_archive('win_manager', target_directory, windows_manager_list)
+
 
 def prepare_wasm_client(target_directory):
     prepare_7z_archive('wasm_client', target_directory, wasm_client_list)
 
+
 def prepare_wasm_client_debug(target_directory):
     prepare_7z_archive('wasm_client-debug', target_directory, wasm_client_debug_folder_list)
 
+
+def prepare_linux_snap(target_directory):
+    prepare_7z_archive('linux_snap', target_directory, snap_list)
+
+
+def prepare_linux_flatpak(target_directory):
+    prepare_7z_archive('linux_flatpak', target_directory, flatpak_list)
+
+
 def prepare_logs(target_directory):
     prepare_7z_archive('logs', target_directory, logs_list)
+
 
 boinc_types = {
     'linux_client': prepare_linux_client,
@@ -306,6 +307,8 @@ boinc_types = {
     'win_manager': prepare_win_manager,
     'wasm_client': prepare_wasm_client,
     'wasm_client-debug': prepare_wasm_client_debug,
+    'linux_snap': prepare_linux_snap,
+    'linux_flatpak': prepare_linux_flatpak,
     'logs': prepare_logs,
 }
 
