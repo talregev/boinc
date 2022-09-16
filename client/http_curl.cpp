@@ -906,19 +906,50 @@ void HTTP_OP_SET::get_fdset(FDSET_GROUP& fg) {
     );
 }
 
+std::string get_http_version(int _enum) {
+    switch (_enum) {
+    case CURL_HTTP_VERSION_NONE:
+        return "CURL_HTTP_VERSION_NONE";
+    case CURL_HTTP_VERSION_1_0:
+        return "CURL_HTTP_VERSION_1_0";
+    case CURL_HTTP_VERSION_1_1:
+        return "CURL_HTTP_VERSION_1_1";
+    case CURL_HTTP_VERSION_2_0:
+        return "CURL_HTTP_VERSION_2_0";
+    case CURL_HTTP_VERSION_2TLS:
+        return "CURL_HTTP_VERSION_2TLS";
+    case CURL_HTTP_VERSION_2_PRIOR_KNOWLEDGE:
+        return "CURL_HTTP_VERSION_2_PRIOR_KNOWLEDGE";
+    case CURL_HTTP_VERSION_3:
+        return "CURL_HTTP_VERSION_3";
+    case CURL_HTTP_VERSION_LAST:
+        return "CURL_HTTP_VERSION_LAST";
+    default:
+        return "HTTP_ERROR";
+    }
+}
+
 // we have a message for this HTTP_OP.
 // get the response code for this request
 //
 void HTTP_OP::handle_messages(CURLMsg *pcurlMsg) {
     int retval;
+    long http_version = 0;
 
     curl_easy_getinfo(curlEasy,
         CURLINFO_RESPONSE_CODE, &response
     );
-
     curl_easy_getinfo(curlEasy,
         CURLINFO_OS_ERRNO, &connect_error
     );
+    curl_easy_getinfo(curlEasy, CURLINFO_HTTP_VERSION, &http_version);
+
+    safe_strcpy(this->m_http_version, get_http_version(http_version).c_str());
+    if (log_flags.http_debug) {
+        msg_printf(project, MSG_INFO,
+            "[http] HTTP version: %s", this->m_http_version
+        );
+    }
 
     // update byte counts and transfer speed
     //
@@ -931,12 +962,13 @@ void HTTP_OP::handle_messages(CURLMsg *pcurlMsg) {
         // SPEED_DOWNLOAD is bytes/sec based on uncompressed size
         // (we don't use it)
         //
-        double size_download, total_time, starttransfer_time;
+        double size_download, total_time, starttransfer_time;            
         curl_easy_getinfo(curlEasy, CURLINFO_SIZE_DOWNLOAD, &size_download);
         curl_easy_getinfo(curlEasy, CURLINFO_TOTAL_TIME, &total_time);
         curl_easy_getinfo(curlEasy,
             CURLINFO_STARTTRANSFER_TIME, &starttransfer_time
         );
+
         double dt = total_time - starttransfer_time;
         if (dt > 0) {
             gstate.net_stats.down.update(size_download, dt);
