@@ -116,7 +116,7 @@ if [ $? -ne 0 ]; then exit 1; fi
 ansible-playbook -i hosts start.yml
 if [ $? -ne 0 ]; then exit 1; fi
 
-until $(curl -o /dev/null -SsifL http://127.0.0.1/boincserver/index.php ); do
+until $(curl -o /dev/null -SsifL http://localhost/boincserver/index.php ); do
     printf '.'
     sleep 5
 done
