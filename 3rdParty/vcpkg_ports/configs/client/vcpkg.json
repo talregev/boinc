@@ -5,7 +5,7 @@
     [
         {
           "name": "curl",
-          "features": ["openssl"],
+          "features": ["openssl", "http3"],
           "default-features": false
         }
     ]   

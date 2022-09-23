@@ -89,24 +89,15 @@ size_t libcurl_write(void *ptr, size_t size, size_t nmemb, HTTP_OP* phop) {
         );
     }
     phop->bytes_xferred += (double)(stWrite);
+    phop->update_http_ip_version();
     phop->update_speed();  // this should update the transfer speed
     daily_xfer_history.add(stWrite, false);
     return stWrite;
 }
 
 size_t libcurl_read(void *ptr, size_t size, size_t nmemb, HTTP_OP* phop) {
-    // OK here's the deal -- phop points to the calling object,
-    // which has already pre-opened the file.  we'll want to
-    // use pByte as a pointer for fseek calls into the file, and
-    // write out size*nmemb # of bytes to ptr
-
-    // take the stream param as a FILE* and write to disk
-    // if (pByte) delete [] pByte;
-    // pByte = new unsigned char[content_length];
-    // memset(pByte, 0x00, content_length); // may as will initialize it!
-
-    // note that fileIn was opened earlier,
-    // go to lSeek from the top and read from there
+    // read data from inFile (or from header if present)
+    // and move to buffer for Curl to send it.
     //
     size_t stSend = size * nmemb;
     int stRead = 0;
@@ -158,6 +149,7 @@ size_t libcurl_read(void *ptr, size_t size, size_t nmemb, HTTP_OP* phop) {
         phop->bytes_xferred += (double)(stRead);
         daily_xfer_history.add(stRead, true);
     }
+    phop->update_http_ip_version();
     phop->update_speed();
     return stRead;
 }
@@ -220,6 +212,40 @@ int libcurl_debugfunction(
     return 0;
 }
 
+std::string get_http_version(int _enum) {
+    switch (_enum) {
+    case CURL_HTTP_VERSION_NONE:
+        return "CURL_HTTP_VERSION_NONE";
+    case CURL_HTTP_VERSION_1_0:
+        return "http/1";
+    case CURL_HTTP_VERSION_1_1:
+        return "http/1.1";
+    case CURL_HTTP_VERSION_2_0:
+        return "http/2";
+    case CURL_HTTP_VERSION_2TLS:
+        return "http/2tls";
+    case CURL_HTTP_VERSION_2_PRIOR_KNOWLEDGE:
+        return "http/2prior_knowledge";
+    case CURL_HTTP_VERSION_3:
+        return "http/3";
+    case CURL_HTTP_VERSION_LAST:
+        return "CURL_HTTP_VERSION_LAST";
+    default:
+        return "HTTP_ERROR";
+    }
+}
+
+// Function to check if the string is IPv4 or IPv6.
+// S is valid ip address: S is IPv4 or IPv6.
+std::string getIPAddressType(string IPAddress)
+{
+    int a, b, c, d;
+    if (sscanf(IPAddress.c_str(), "%d.%d.%d.%d", &a, &b, &c, &d) == 4) {
+        return "ipv4";
+    }
+    return "ipv6";
+}
+
 void HTTP_OP::init(PROJECT* p) {
     reset();
     start_time = gstate.now;
@@ -249,7 +275,6 @@ void HTTP_OP::reset() {
     close_socket();
 }
 
-
 HTTP_OP::HTTP_OP() {
     safe_strcpy(m_url, "");
     safe_strcpy(m_curl_user_credentials, "");
@@ -264,16 +289,17 @@ HTTP_OP::HTTP_OP() {
     curlEasy = NULL;
     pcurlFormStart = NULL;
     pcurlFormEnd = NULL;
-    pByte = NULL;
     lSeek = 0;
     xfer_speed = 0;
     is_background = false;
+    safe_strcpy(m_http_version, "");
+    safe_strcpy(m_ip_version, "");
     reset();
 }
 
 HTTP_OP::~HTTP_OP() {
     close_socket();
-    close_file();
+    close_files();
 }
 
 // Initialize HTTP GET operation;
@@ -406,7 +432,11 @@ static int set_cloexec(void*, curl_socket_t fd, curlsocktype purpose) {
 }
 #endif
 
-// the following will do an HTTP GET or POST using libcurl
+// Initiate an HTTP GET or POST using libcurl.
+// Open input/output files as needed.
+// If error, close these before returning.
+// On success, we'll call handle_messages() in response
+// to select() on the socket, and eventually close the files there.
 //
 int HTTP_OP::libcurl_exec(
     const char* url, const char* in, const char* out, double offset,
@@ -608,6 +638,7 @@ int HTTP_OP::libcurl_exec(
                 msg_printf(NULL, MSG_INTERNAL_ERROR, "No HTTP input file %s", infile);
                 http_op_retval = ERR_FOPEN;
                 http_op_state = HTTP_STATE_DONE;
+                close_files();
                 return ERR_FOPEN;
             }
         }
@@ -652,7 +683,6 @@ int HTTP_OP::libcurl_exec(
 
         curl_off_t fs = (curl_off_t) content_length;
 
-        pByte = NULL;
         lSeek = 0;    // initialize the vars we're going to use for byte transfers
 
         // we can make the libcurl_read "fancier" in the future,
@@ -710,6 +740,7 @@ int HTTP_OP::libcurl_exec(
         msg_printf(0, MSG_INTERNAL_ERROR,
             "Couldn't add curlEasy handle to curlMulti"
         );
+        close_files();
         return ERR_HTTP_TRANSIENT;
         // returns 0 (CURLM_OK) on successful handle creation
     }
@@ -893,7 +924,9 @@ void HTTP_OP::close_socket() {
     }
 }
 
-void HTTP_OP::close_file() {
+// close input and output files
+//
+void HTTP_OP::close_files() {
     if (fileIn) {
         fclose(fileIn);
         fileIn = NULL;
@@ -901,10 +934,6 @@ void HTTP_OP::close_file() {
     if (fileOut) {
         fclose(fileOut);
         fileOut = NULL;
-    }
-    if (pByte) { //free any read memory used
-        delete [] pByte;
-        pByte = NULL;
     }
 }
 
@@ -1046,12 +1075,12 @@ void HTTP_OP::handle_messages(CURLMsg *pcurlMsg) {
         }
     }
 
-    // close files and "sockets" (i.e. libcurl handles)
+    // close in/out files and "sockets" (i.e. libcurl handles)
     //
-    close_file();
+    close_files();
     close_socket();
 
-    // finally remove the tmpfile if not explicitly set
+    // remove the output file if it's a temp
     //
     if (bTempOutfile) {
         boinc_delete_file(outfile);
@@ -1111,6 +1140,24 @@ void HTTP_OP::update_speed() {
     }
 }
 
+void HTTP_OP::update_http_ip_version() {
+    long http_version = 0;
+    char* ip;    
+    curl_easy_getinfo(curlEasy, CURLINFO_HTTP_VERSION, &http_version);
+    curl_easy_getinfo(curlEasy, CURLINFO_PRIMARY_IP, &ip);
+    safe_strcpy(this->m_ip_version, getIPAddressType(ip).c_str());
+
+    safe_strcpy(this->m_http_version, get_http_version(http_version).c_str());
+    if (log_flags.http_debug) {
+        msg_printf(project, MSG_INFO,
+            "[http] HTTP version: %s", this->m_http_version
+        );
+        msg_printf(project, MSG_INFO,
+            "[http] IP version: %s", this->m_ip_version
+        );
+    }    
+}
+
 void HTTP_OP::set_speed_limit(bool is_upload, double bytes_sec) {
 #if LIBCURL_VERSION_NUM >= 0x070f05
     CURLcode cc = CURLE_OK;
@@ -1143,4 +1190,3 @@ void HTTP_OP_SET::cleanup_temp_files() {
     }
     dir_close(d);
 }
-
