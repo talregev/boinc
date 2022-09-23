@@ -5,7 +5,7 @@
     [
         {
           "name": "curl",
-          "features": ["schannel", "http2"],
+          "features": ["schannel"],
           "default-features": false
         },
         "openssl"
