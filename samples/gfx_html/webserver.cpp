@@ -143,7 +143,7 @@ int start_webserver_thread() {
 int webserver_initialize() {
     snprintf(
         webserver_listening, sizeof(webserver_listening)-1,
-        "127.0.0.1:%d",
+        "localhost:%d",
         get_htmlgfx_webserver_port()
     );
 

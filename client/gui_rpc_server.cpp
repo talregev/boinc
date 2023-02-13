@@ -329,7 +329,7 @@ int GUI_RPC_CONN_SET::init_tcp(bool last_time) {
             msg_printf(NULL, MSG_INFO, "[gui_rpc] Remote control allowed");
         }
     } else {
-        addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+        addr.sin_addr.s_addr = inet_addr("localhost");
         if (log_flags.gui_rpc_debug) {
             msg_printf(NULL, MSG_INFO, "[gui_rpc] Local control only allowed");
         }

@@ -1975,7 +1975,7 @@ int CMainDocument::WorkShowVMConsole(RESULT* res) {
         }
 
         strCommand = wxT("osascript -e 'tell application \"CoRD\"' -e 'activate' -e 'open location \"rdp://") + strConnection + wxT("\"' -e 'end tell'");
-        strCommand.Replace(wxT("localhost"), wxT("127.0.0.1"));
+        strCommand.Replace(wxT("127.0.0.1"), wxT("localhost"));
         system(strCommand.char_str());
 #endif
     }
