@@ -69,6 +69,7 @@ exclude_files = [
     os.path.join(directory, "html/inc/GeoIP.dat"),
     os.path.join(directory, "mac_installer/BOINC.pmproj"),
     os.path.join(directory, "mac_build/boinc.xcodeproj/project.pbxproj"),
+    os.path.join(directory, "mac_build/boinc.vcpkg.xcodeproj/project.pbxproj"),
     os.path.join(directory, "stage/usr/local/bin/boinc_client"),
     os.path.join(directory, "stage/usr/local/bin/boinccmd"),
     os.path.join(directory, "stage/usr/local/bin/boinc"),

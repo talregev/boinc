@@ -45,6 +45,7 @@ config=""
 doclean=""
 beautifier="cat" # we need a fallback if xcpretty is not available
 share_paths="yes"
+vcpkg=0
 while [[ $# -gt 0 ]]; do
     key="$1"
     case $key in
@@ -61,6 +62,9 @@ while [[ $# -gt 0 ]]; do
         ;;
         --no_shared_headers)
         share_paths="no"
+        ;;
+        --vcpkg)
+        vcpkg=1
         ;;
     esac
     shift # past argument or value
@@ -107,12 +111,56 @@ libSearchPathDbg=""
 if [ "${style}" == "Development" ]; then
     libSearchPathDbg="${cache_dir}/lib/debug"
 fi
+wx_includes_dirs=""
+if [ $vcpkg -ne 0 ]; then
+    wx_includes_dirs=$(ls -d $cache_dir/include/wx-3.*/)
+    export MAC_OS_X_VERSION_MAX_ALLOWED=126000
+    export MAC_OS_X_VERSION_MIN_REQUIRED=126000
+    export MACOSX_DEPLOYMENT_TARGET=12.6
+    export OTHER_LDFLAGS="-bind_at_load \
+            -D_THREAD_SAFE \
+            -lwx_osx_cocoau-3.1 \
+            -lwxscintilla-3.1 \
+            -lbrotlicommon-static \
+            -lbrotlidec-static \
+            -lbrotlienc-static \
+            -lbz2 \
+            -ljpeg \
+            -llzma \
+            -lpcre2-16 \
+            -lpcre2-32 \
+            -lpcre2-8 \
+            -lpcre2-posix \
+            -lpng \
+            -lpng16 \
+            -ltiff \
+            -lturbojpeg \
+            -liconv \
+            -lz \
+            -lpthread \
+            -lm \
+            -lcurl \
+            -lcares \
+            -lresolv \
+            -lssl \
+            -lcrypto \
+            -ldl \
+            -lz \
+            -lldap \
+            "
+fi
 target="mgr_boinc"
 echo "Building ${target}..."
-source BuildMacBOINC.sh ${config} -noclean -target ${target} -setting HEADER_SEARCH_PATHS "../clientgui ${cache_dir}/include" -setting LIBRARY_SEARCH_PATHS "${libSearchPathDbg} ${cache_dir}/lib" | tee xcodebuild_${target}.log | $beautifier; retval=${PIPESTATUS[0]}
+source BuildMacBOINC.sh ${config} -noclean -target ${target} -setting HEADER_SEARCH_PATHS "../clientgui ${cache_dir}/include $wx_includes_dirs" -setting LIBRARY_SEARCH_PATHS "${libSearchPathDbg} ${cache_dir}/lib" | tee xcodebuild_${target}.log | $beautifier; retval=${PIPESTATUS[0]}
 if [ ${retval} -ne 0 ]; then
     echo "Building ${target}...failed"
     cd ..; exit 1;
+fi
+if [ $vcpkg -ne 0 ]; then
+    unset MAC_OS_X_VERSION_MAX_ALLOWED
+    unset MAC_OS_X_VERSION_MIN_REQUIRED
+    unset MACOSX_DEPLOYMENT_TARGET
+    unset OTHER_LDFLAGS
 fi
 echo "Verifying architecture (x86_64 arm64) of libboinc.a..."
 lipo ./build/${style}/libboinc.a -verify_arch x86_64 arm64 | $beautifier; retval=${PIPESTATUS[0]}
