@@ -45,6 +45,7 @@ config=""
 doclean=""
 beautifier="cat" # we need a fallback if xcpretty is not available
 share_paths="yes"
+vcpkg=0
 while [[ $# -gt 0 ]]; do
     key="$1"
     case $key in
@@ -61,6 +62,9 @@ while [[ $# -gt 0 ]]; do
         ;;
         --no_shared_headers)
         share_paths="no"
+        ;;
+        --vcpkg)
+        vcpkg=1
         ;;
     esac
     shift # past argument or value
@@ -79,6 +83,7 @@ cd ./mac_build || exit 1
 retval=0
 
 if [ ${share_paths} = "yes" ]; then
+    echo "Building share_paths"
     ## all targets share the same header and library search paths
     libSearchPathDbg=""
     if [ "${style}" == "Development" ]; then
@@ -107,9 +112,65 @@ libSearchPathDbg=""
 if [ "${style}" == "Development" ]; then
     libSearchPathDbg="${cache_dir}/lib/debug"
 fi
+
+target="libboinc"
+echo "Building ${target}..."
+source BuildMacBOINC.sh ${config} -noclean -target ${target} | tee xcodebuild_${target}.log | $beautifier; retval=${PIPESTATUS[0]}
+if [ ${retval} -ne 0 ]; then
+    echo "Building ${target}...failed"
+    cd ..; exit 1;
+fi
+echo "Verifying architecture (x86_64 arm64) of libboinc.a..."
+lipo ./build/${style}/libboinc.a -verify_arch x86_64 arm64 | $beautifier; retval=${PIPESTATUS[0]}
+if [ ${retval} -ne 0 ]; then
+    echo "Verifying architecture (x86_64 arm64) of libboinc.a...failed"
+    echo "Building ${target}...failed"
+    cd ..; exit 1;
+fi
+echo "Verifying architecture (x86_64 arm64) of libboinc.a...done"
+echo "Building ${target}...done"
+
+vcpkg_setting_pref=""
+vcpkg_setting="-noclean"
+wx_includes_dirs=""
+if [ $vcpkg -ne 0 ]; then
+    wx_includes_dirs=$(ls -d $cache_dir/include/wx-3.*/)
+    vcpkg_setting_pref="-setting OTHER_LDFLAGS"
+    vcpkg_setting=" \
+        -bind_at_load \
+        -D_THREAD_SAFE \
+        -L. \
+        -lboinc \
+        -lcurl \
+        -lcares \
+        -lresolv \
+        -lssl \
+        -lcrypto \
+        -lexpat \
+        -ldl \
+        -lz \
+        -lldap \
+        -lwx_osx_cocoau-3.1 \
+        -lwxregexu-3.1 \
+        -lwxscintilla-3.1 \
+        -lbrotlicommon-static \
+        -lbrotlidec-static \
+        -lbrotlienc-static \
+        -lbz2 \
+        -ljpeg \
+        -llzma \
+        -lpng \
+        -lpng16 \
+        -ltiff \
+        -lturbojpeg \
+        -liconv \
+        -lpthread \
+        -lm \
+    "
+fi
 target="mgr_boinc"
 echo "Building ${target}..."
-source BuildMacBOINC.sh ${config} -noclean -target ${target} -setting HEADER_SEARCH_PATHS "../clientgui ${cache_dir}/include" -setting LIBRARY_SEARCH_PATHS "${libSearchPathDbg} ${cache_dir}/lib" | tee xcodebuild_${target}.log | $beautifier; retval=${PIPESTATUS[0]}
+source BuildMacBOINC.sh ${config} -noclean -target ${target} -setting HEADER_SEARCH_PATHS "../clientgui ${cache_dir}/include $wx_includes_dirs" -setting LIBRARY_SEARCH_PATHS "${libSearchPathDbg} ${cache_dir}/lib" $vcpkg_setting_pref "${vcpkg_setting}" | tee xcodebuild_${target}.log | $beautifier; retval=${PIPESTATUS[0]}
 if [ ${retval} -ne 0 ]; then
     echo "Building ${target}...failed"
     cd ..; exit 1;
@@ -188,23 +249,6 @@ if [ ${retval} -ne 0 ]; then
     cd ..; exit 1;
 fi
 echo "Verifying architecture (x86_64 arm64) of libboinc_graphics2.a...done"
-echo "Building ${target}...done"
-
-target="libboinc"
-echo "Building ${target}..."
-source BuildMacBOINC.sh ${config} -noclean -target ${target} | tee xcodebuild_${target}.log | $beautifier; retval=${PIPESTATUS[0]}
-if [ ${retval} -ne 0 ]; then
-    echo "Building ${target}...failed"
-    cd ..; exit 1;
-fi
-echo "Verifying architecture (x86_64 arm64) of libboinc.a..."
-lipo ./build/${style}/libboinc.a -verify_arch x86_64 arm64 | $beautifier; retval=${PIPESTATUS[0]}
-if [ ${retval} -ne 0 ]; then
-    echo "Verifying architecture (x86_64 arm64) of libboinc.a...failed"
-    echo "Building ${target}...failed"
-    cd ..; exit 1;
-fi
-echo "Verifying architecture (x86_64 arm64) of libboinc.a...done"
 echo "Building ${target}...done"
 
 target="api_libboinc"
@@ -312,9 +356,29 @@ libSearchPath=""
 if [ "${style}" == "Development" ]; then
    libSearchPath="./build/Development"
 fi
+
+vcpkg_setting_pref=""
+vcpkg_setting="-noclean"
+if [ $vcpkg -ne 0 ]; then
+    vcpkg_setting_pref="-setting OTHER_LDFLAGS"
+    vcpkg_setting=" \
+        -lresolv \
+        -ljpeg \
+        -lfreetype \
+        -lbrotlicommon-static \
+        -lbrotlidec-static \
+        -lbrotlienc-static \
+        -lpng \
+        -lpng16 \
+        -lm \
+        -lftgl \
+        -lz \
+        -lbz2 \
+    "
+fi
 target="ss_app"
 echo "Building ${target}..."
-source BuildMacBOINC.sh ${config} -noclean -target ${target} -setting HEADER_SEARCH_PATHS "../api/ ../samples/jpeglib/ ${cache_dir}/include ${cache_dir}/include/freetype2"  -setting LIBRARY_SEARCH_PATHS "${libSearchPath} ${cache_dir}/lib ../lib" | tee xcodebuild_${target}.log | $beautifier; retval=${PIPESTATUS[0]}
+source BuildMacBOINC.sh ${config} -noclean -target ${target} -setting HEADER_SEARCH_PATHS "../api/ ../samples/jpeglib/ ${cache_dir}/include ${cache_dir}/include/freetype2"  -setting LIBRARY_SEARCH_PATHS "${libSearchPath} ${cache_dir}/lib ../lib" $vcpkg_setting_pref "$vcpkg_setting" | tee xcodebuild_${target}.log | $beautifier; retval=${PIPESTATUS[0]}
 if [ ${retval} -ne 0 ]; then
     echo "Building ${target}...failed"
     cd ..; exit 1;
@@ -497,6 +561,7 @@ fi
 echo "Verifying architecture (x86_64 arm64) of testzlibconflict...done"
 echo "Building ${target}...done"
 
+if [ $vcpkg -eq 0 ]; then
 target="UpperCase2"
 echo "Building ${target}..."
 source BuildMacBOINC.sh ${config} -noclean -uc2 -setting HEADER_SEARCH_PATHS "../../ ../../api/ ../../lib/ ../../zip/ ../../clientgui/mac/ ../jpeglib/ ../samples/jpeglib/ ${cache_dir}/include ${cache_dir}/include/freetype2"  -setting LIBRARY_SEARCH_PATHS "../../mac_build/build/Deployment ${cache_dir}/lib" | tee xcodebuild_${target}.log | $beautifier; retval=${PIPESTATUS[0]}
@@ -546,5 +611,5 @@ if [ ${retval} -ne 0 ]; then
 fi
 echo "Verifying architecture (x86_64 arm64) of vboxwrapper...done"
 echo "Building ${target}...done"
-
+fi
 cd ..
