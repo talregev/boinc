@@ -19,19 +19,34 @@ env:
   AWS_DEFAULT_REGION: us-west-2
 
 jobs:
-  docker_build:
+  snap_build:
     name: snap-${{ matrix.type }}-build
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         include:
-        - type: x64
-          architecture: linux/amd64
-          snap_file: boinc_amd64.snap
+        # - type: x64
+        #   architecture: linux/amd64
+        #   snap_file: boinc_amd64.snap
+        #   triplet: x64-linux-snap
+        # - type: arm64
+        #   architecture: linux/arm64
+        #   snap_file: boinc_arm64.snap
+        - type: arm
+          architecture: linux/arm/v7
+          snap_file: boinc_armhf.snap
+          triplet: arm-linux-snap
 
     steps:
     - uses: actions/checkout@v3
+
+    - name: Cache dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          3rdParty/buildCache/linux
+        key: snap-${{ matrix.type }}-${{ hashFiles('3rdParty/vcpkg_ports/snap_tools_versions.sh') }}
 
     - name: Install dependencies
       run: |
@@ -61,15 +76,32 @@ jobs:
           --privileged \
           --volume $PWD:/root \
           --workdir /root \
-          --platform "${{ matrix.architecture }}" \
+          --platform ${{ matrix.architecture }} \
+          --env triplet=${{ matrix.triplet }} \
           --env VCPKG_BINARY_SOURCES=$VCPKG_BINARY_SOURCES \
           --env AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID \
           --env AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY \
           --env AWS_DEFAULT_REGION=$AWS_DEFAULT_REGION \
           diddledani/snapcraft:core22 \
-          "snap run snapcraft --verbosity verbose pack --destructive-mode --output ${{ matrix.snap_file }}"
+          "snap run snapcraft --verbosity verbose pack --destructive-mode --output ${{ matrix.snap_file }}"   
 
           sudo chown $USER ${{ matrix.snap_file }}
+
+    - name: Cache aws-cli and ninja
+      if: success() && matrix.type == 'arm'
+      run: |
+        if [ ! -d "3rdParty/buildCache/linux/awscli/" ]; then
+          echo "Caching aws-cli"
+          mkdir -p 3rdParty/buildCache/linux/awscli/
+          sudo chown -R $USER parts/boinc/build/3rdParty/buildCache/linux/awscli/
+          cp -R parts/boinc/build/3rdParty/buildCache/linux/awscli/ 3rdParty/buildCache/linux/
+        fi
+        if [ ! -d "3rdParty/buildCache/linux/ninja/" ]; then
+          echo "Caching ninja"
+          mkdir -p 3rdParty/buildCache/linux/ninja/
+          sudo chown -R $USER parts/boinc/build/3rdParty/buildCache/linux/ninja/
+          cp -R parts/boinc/build/3rdParty/buildCache/linux/ninja/ 3rdParty/buildCache/linux/
+        fi
 
     - name: Install and test snap boinc inside docker
       if: success()
@@ -82,7 +114,7 @@ jobs:
           --workdir /root \
           --platform "${{ matrix.architecture }}" \
           diddledani/snapcraft:core22 \
-          "snap install --devmode ${{ matrix.snap_file }} && boinc --version && boinc.client --version"
+          "snap install --devmode ${{ matrix.snap_file }} && boinc --version && boinc.client --version && boinc.manager --version"
 
     - name: Install and test snap boinc x64
       if: success() && matrix.type == 'x64'
@@ -90,6 +122,7 @@ jobs:
         sudo snap install --devmode ${{ matrix.snap_file }}
         boinc --version
         boinc.client --version
+        boinc.manager --version
 
     - name: Prepare logs on failure
       if: ${{ failure() }}
