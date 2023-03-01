@@ -61,4 +61,8 @@ ftglDirName="ftgl-2.1.3~rc5"
 ftglFileName="ftgl-2.1.3-rc5.tar.gz"
 ftglURL="https://sourceforge.net/projects/ftgl/files/FTGL%20Source/2.1.3%7Erc5/ftgl-2.1.3-rc5.tar.gz"
 
+nghttp2DirName="nghttp2-1.52.0"
+nghttp2FileName="nghttp2-1.52.0.tar.gz"
+nghttp2URL="https://github.com/nghttp2/nghttp2/releases/download/v1.52.0/nghttp2-1.52.0.tar.gz"
+
 return 0

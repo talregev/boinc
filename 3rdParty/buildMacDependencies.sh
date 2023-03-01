@@ -155,6 +155,7 @@ fi
 source "${ROOTDIR}/mac_build/dependencyNames.sh"
 
 #download_and_build $DIRNAME $FILENAME $DOWNLOADURL $BUILDSCRIPT $PRODUCTNAME $ARCHS
+download_and_build "${nghttp2DirName}" "${nghttp2FileName}" "${nghttp2URL}" "${ROOTDIR}/mac_build/buildnghttp2.sh" "libnghttp2.a" "x86_64 arm64"
 download_and_build "${opensslDirName}" "${opensslFileName}" "${opensslURL}" "${ROOTDIR}/mac_build/buildopenssl.sh" "libssl.a" "x86_64 arm64"
 download_and_build "${caresDirName}" "${caresFileName}" "${caresURL}" "${ROOTDIR}/mac_build/buildc-ares.sh" "libcares.a" "x86_64 arm64"
 download_and_build "${curlDirName}" "${curlFileName}" "${curlURL}" "${ROOTDIR}/mac_build/buildcurl.sh" "libcurl.a" "x86_64 arm64"

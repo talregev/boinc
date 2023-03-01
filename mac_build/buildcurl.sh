@@ -226,7 +226,7 @@ export CXXFLAGS="-isysroot ${SDKPATH} -arch x86_64 -mmacosx-version-min=10.10 -s
 export CFLAGS="-isysroot ${SDKPATH} -mmacosx-version-min=10.10 -arch x86_64"
 
 if [ "x${lprefix}" != "x" ]; then
-    PKG_CONFIG_PATH="${lprefix}/lib/pkgconfig" ./configure --prefix=${lprefix} --enable-ares --disable-shared --with-secure-transport --without-libidn --without-libidn2 --without-nghttp2 --without-ngtcp2 --without-nghttp3 --without-quiche --host=x86_64-apple-darwin
+    PKG_CONFIG_PATH="${lprefix}/lib/pkgconfig" ./configure --prefix=${lprefix} --enable-ares --disable-shared --with-secure-transport --without-libidn --without-libidn2 --with-nghttp2 --without-ngtcp2 --without-nghttp3 --without-quiche --host=x86_64-apple-darwin
     if [ $? -ne 0 ]; then return 1; fi
 else
     # Get the name of the current versions of c-ares from the
@@ -249,7 +249,7 @@ else
         cd "${CURL_DIR}" || return 1
     fi
 
-    ./configure --disable-shared --with-secure-transport --enable-ares="${libcares}" --without-libidn --without-libidn2 --without-nghttp2 --without-ngtcp2 --without-nghttp3 --without-quiche --host=x86_64-apple-darwin
+    ./configure --disable-shared --with-secure-transport --enable-ares="${libcares}" --without-libidn --without-libidn2 --with-nghttp2 --without-ngtcp2 --without-nghttp3 --without-quiche --host=x86_64-apple-darwin
     if [ $? -ne 0 ]; then return 1; fi
     echo ""
 fi
@@ -282,9 +282,9 @@ export CFLAGS="-isysroot ${SDKPATH} -mmacosx-version-min=10.10 -target arm64-app
 # x86_64 and arm64, so this is not currently an issue.
 ## cp -f ../"${caresDirName}"/ares_build_arm.h /tmp/installed-c-ares/include/ares_build.h
     if [ "x${lprefix}" != "x" ]; then
-        PKG_CONFIG_PATH="${lprefix}/lib/pkgconfig" ./configure --prefix=${lprefix} --enable-ares --disable-shared --with-secure-transport --without-libidn --without-libidn2 --without-nghttp2 --without-ngtcp2 --without-nghttp3 --without-quiche --host=arm-apple-darwin
+        PKG_CONFIG_PATH="${lprefix}/lib/pkgconfig" ./configure --prefix=${lprefix} --enable-ares --disable-shared --with-secure-transport --without-libidn --without-libidn2 --with-nghttp2 --without-ngtcp2 --without-nghttp3 --without-quiche --host=arm-apple-darwin
     else
-        ./configure --disable-shared --with-secure-transport --enable-ares="${libcares}" --without-libidn --without-libidn2 --without-nghttp2 --without-ngtcp2 --without-nghttp3 --without-quiche --host=arm-apple-darwin
+        ./configure --disable-shared --with-secure-transport --enable-ares="${libcares}" --without-libidn --without-libidn2 --with-nghttp2 --without-ngtcp2 --without-nghttp3 --without-quiche --host=arm-apple-darwin
         echo ""
     fi
 
