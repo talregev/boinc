@@ -94,16 +94,16 @@ AC_DEFUN([LIBCURL_CHECK_CONFIG],
            if test x"$LIBCURL_CPPFLAGS" = "x" ; then
               LIBCURL_CPPFLAGS=`pkg-config $_libcurl_pc --cflags`
            fi
-
+           echo LIBCURL_CPPFLAGS=$LIBCURL_CPPFLAGS
            if test x"$LIBCURL" = "x" ; then
                if $(pkg-config $_libcurl_pc --static 2>&1 > /dev/null) ; then
                   LIBCURL="`pkg-config $_libcurl_pc --static`"
                fi
            fi
-
+           echo LIBCURL1=$LIBCURL
            if test x"$LIBCURL" = "x" ; then
               LIBCURL="`pkg-config $_libcurl_pc --libs`"
-
+              echo LIBCURL1=$LIBCURL
               if test "x`echo \""$LIBCURL"\" | grep ssl`" = x ; then
                 LIBCURL="${LIBCURL} ${SSL_LIBS}"
               fi
@@ -140,75 +140,75 @@ AC_DEFUN([LIBCURL_CHECK_CONFIG],
         unset _libcurl_wanted
      fi
 
-     AC_PATH_PROG([_libcurl_config],[curl-config])
-     if test x$_libcurl_config != "x" ; then
-        AC_CACHE_CHECK([for the version of libcurl],
-           [libcurl_cv_lib_curl_version],
-           [libcurl_cv_lib_curl_version=`$_libcurl_config --version | $AWK '{print $[]2}'`])
+    AC_PATH_PROG([_libcurl_config],[curl-config])
+    if test x$_libcurl_config != "x" ; then
+       AC_CACHE_CHECK([for the version of libcurl],
+          [libcurl_cv_lib_curl_version],
+          [libcurl_cv_lib_curl_version=`$_libcurl_config --version | $AWK '{print $[]2}'`])
 
-        _libcurl_version=`echo $libcurl_cv_lib_curl_version | $_libcurl_version_parse`
-        _libcurl_wanted=`echo ifelse([$2],,[0],[$2]) | $_libcurl_version_parse`
+       _libcurl_version=`echo $libcurl_cv_lib_curl_version | $_libcurl_version_parse`
+       _libcurl_wanted=`echo ifelse([$2],,[0],[$2]) | $_libcurl_version_parse`
 
-        if test $_libcurl_wanted -gt 0 ; then
-           AC_CACHE_CHECK([for libcurl >= version $2],
-              [libcurl_cv_lib_version_ok],
-              [
-                 if test $_libcurl_version -ge $_libcurl_wanted ; then
-                 libcurl_cv_lib_version_ok=yes
-                    else
-                 libcurl_cv_lib_version_ok=no
+       if test $_libcurl_wanted -gt 0 ; then
+          AC_CACHE_CHECK([for libcurl >= version $2],
+             [libcurl_cv_lib_version_ok],
+             [
+                if test $_libcurl_version -ge $_libcurl_wanted ; then
+                libcurl_cv_lib_version_ok=yes
+                   else
+                libcurl_cv_lib_version_ok=no
                 fi
-              ])
-        fi
+             ])
+       fi
 
-        if test $_libcurl_wanted -eq 0 || test x$libcurl_cv_lib_version_ok = xyes ; then
-           if test x"$LIBCURL_CPPFLAGS" = "x" ; then
-              LIBCURL_CPPFLAGS=`$_libcurl_config --cflags`
-           fi
+       if test $_libcurl_wanted -eq 0 || test x$libcurl_cv_lib_version_ok = xyes ; then
+          if test x"$LIBCURL_CPPFLAGS" = "x" ; then
+             LIBCURL_CPPFLAGS=`$_libcurl_config --cflags`
+          fi
 
-           if test x"$LIBCURL" = "x" ; then
-              if test "x${disable_static_linkage}" = "xno" ; then
+          if test x"$LIBCURL" = "x" ; then
+             if test "x${disable_static_linkage}" = "xno" ; then
                 if $_libcurl_config --static-libs 2>&1 > /dev/null ; then
-                  LIBCURL="`$_libcurl_config --static-libs`"
+                   LIBCURL="`$_libcurl_config --static-libs`"
                 fi
-              fi
-           fi
+             fi
+          fi
 
-           if test x"$LIBCURL" = "x" ; then
-              LIBCURL="`$_libcurl_config --libs`"
+          if test x"$LIBCURL" = "x" ; then
+             LIBCURL="`$_libcurl_config --libs`"
 
-              if test "x`echo \""$LIBCURL"\" | grep ssl`" = x ; then
+             if test "x`echo \""$LIBCURL"\" | grep ssl`" = x ; then
                 LIBCURL="${LIBCURL} ${SSL_LIBS}"
-              fi
+             fi
 
-              # fix cannot find -lssl
-              if test "x`echo \""$SSL_LIBS"\" | grep '\-L/'`" != 'x' ; then
+             # fix cannot find -lssl
+             if test "x`echo \""$SSL_LIBS"\" | grep '\-L/'`" != 'x' ; then
                 LIBCURL="${LIBCURL} ${SSL_LIBS}"
-              fi
+             fi
 
-              # This is so silly, but Apple actually has a bug in their
-              # curl-config script.  Fixed in Tiger, but there are still
-              # lots of Panther installs around.
-              case "${host}" in
-                 powerpc-apple-darwin7*)
-                    LIBCURL=`echo $LIBCURL | sed -e 's|-arch i386||g'`
-                    ;;
-              esac
-           fi
+             # This is so silly, but Apple actually has a bug in their
+             # curl-config script.  Fixed in Tiger, but there are still
+             # lots of Panther installs around.
+             case "${host}" in
+                powerpc-apple-darwin7*)
+                   LIBCURL=`echo $LIBCURL | sed -e 's|-arch i386||g'`
+                   ;;
+             esac
+          fi
 
-           # All curl-config scripts support --feature
-           _libcurl_features=`$_libcurl_config --feature`
+          # All curl-config scripts support --feature
+          _libcurl_features=`$_libcurl_config --feature`
 
-           # Is it modern enough to have --protocols? (7.12.4)
-           if test $_libcurl_version -ge 461828 ; then
-              _libcurl_protocols=`$_libcurl_config --protocols`
-           fi
-        else
-           _libcurl_try_link=no
-        fi
+          # Is it modern enough to have --protocols? (7.12.4)
+          if test $_libcurl_version -ge 461828 ; then
+             _libcurl_protocols=`$_libcurl_config --protocols`
+          fi
+       else
+          _libcurl_try_link=no
+       fi
 
-        unset _libcurl_wanted
-     fi
+       unset _libcurl_wanted
+    fi
 
      # do we need the ldap libraries?
      if test "x${_libldap_with}" = "x" -a \
@@ -249,14 +249,15 @@ AC_DEFUN([LIBCURL_CHECK_CONFIG],
         # we didn't find curl-config, so let's see if the user-supplied
         # link line (or failing that, "-lcurl") is enough.
         LIBCURL=${LIBCURL-"-lcurl"}
-
+        echo CPPFLAGS=$CPPFLAGS
+        echo LIBS="$LIBS $LIBCURL"
         AC_CACHE_CHECK([whether libcurl is usable],
            [libcurl_cv_lib_curl_usable],
            [
            _libcurl_save_cppflags=$CPPFLAGS
            CPPFLAGS="$CPPFLAGS $LIBCURL_CPPFLAGS"
-           _libcurl_save_libs=$LIBS
            LIBS="$LIBS $LIBCURL"
+           _libcurl_save_libs=$LIBS
 
            AC_LINK_IFELSE([AC_LANG_PROGRAM([#include <curl/curl.h>],[
 /* Try and use a few common options to force a failure if we are
@@ -284,8 +285,8 @@ x=CURLOPT_VERBOSE;
 
            _libcurl_save_cppflags=$CPPFLAGS
            CPPFLAGS="$CPPFLAGS $LIBCURL_CPPFLAGS"
+           LIBS="$LIBS $LIBCURL"           
            _libcurl_save_libs=$LIBS
-           LIBS="$LIBS $LIBCURL"
 
            AC_CHECK_FUNC(curl_free,,
                 AC_DEFINE(curl_free,free,
