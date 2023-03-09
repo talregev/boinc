@@ -115,7 +115,9 @@ protected:
     bool                m_bFilterEvents;
     bool                m_bAboutDialogIsOpen;
     bool                m_bRunDaemon;  
-    bool                m_bNeedRunDaemon;  
+    bool                m_bNeedRunDaemon;
+
+    bool                m_bWebSocket;
 
     // The last value defined in the wxLanguage enum is wxLANGUAGE_USER_DEFINED.
     // defined in: wx/intl.h
