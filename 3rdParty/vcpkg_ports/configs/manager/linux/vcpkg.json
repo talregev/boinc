@@ -11,6 +11,11 @@
         {
           "name": "wxwidgets",
           "default-features": false
+        },
+        {
+          "name": "ixwebsocket",
+          "features": ["openssl"],          
+          "default-features": false
         }
     ]
 }

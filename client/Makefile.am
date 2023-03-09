@@ -31,7 +31,7 @@ boinccmd_SOURCES = boinc_cmd.cpp
 boinccmd_DEPENDENCIES = $(LIBBOINC)
 boinccmd_CPPFLAGS = $(AM_CPPFLAGS)
 boinccmd_LDFLAGS = $(AM_LDFLAGS) -L$(top_srcdir)/lib
-boinccmd_LDADD = $(LIBBOINC) $(BOINC_EXTRA_LIBS) $(PTHREAD_LIBS)
+boinccmd_LDADD = $(LIBBOINC) $(BOINC_EXTRA_LIBS) $(PTHREAD_LIBS) -lixwebsocket -lssl -lcrypto -lz
 
 boinc_client_SOURCES = \
     acct_mgr.cpp \
@@ -109,7 +109,7 @@ else
 boinc_client_SOURCES += hostinfo_unix.cpp
 endif
 endif
-boinc_client_LDADD = $(LIBBOINC) $(LIBBOINC_CRYPT) $(BOINC_EXTRA_LIBS) $(PTHREAD_LIBS)
+boinc_client_LDADD = $(LIBBOINC) $(LIBBOINC_CRYPT) $(BOINC_EXTRA_LIBS) $(PTHREAD_LIBS) -lixwebsocket -lssl -lcrypto -lz
 
 boinc_clientdir = $(bindir)
 
