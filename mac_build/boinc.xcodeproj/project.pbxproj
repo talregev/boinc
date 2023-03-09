@@ -4388,6 +4388,7 @@
 					"-lcares",
 					"-lcrypto",
 					"-lssl",
+					"-lnghttp2",
 					"-lldap",
 					"-lz",
 				);
@@ -4582,6 +4583,7 @@
 					"-lcares",
 					"-lcrypto",
 					"-lssl",
+					"-lnghttp2",
 					"-lldap",
 					"-lz",
 				);
