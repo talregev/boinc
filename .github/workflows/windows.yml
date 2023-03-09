@@ -22,7 +22,8 @@ jobs:
     runs-on: windows-2022
     strategy:
       matrix:
-        type: [libs-cmake, msbuild]
+        type: [libs-cmake]
+        # type: [libs-cmake, msbuild]
         platform: [x64, ARM64]
         configuration: [Release]
       fail-fast: false

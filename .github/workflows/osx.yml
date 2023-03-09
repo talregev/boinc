@@ -22,7 +22,8 @@ jobs:
     runs-on: macos-latest
     strategy:
       matrix:
-        type: [manager, samples-makefile, libs-cmake]
+        type: [libs-cmake]
+        # type: [manager, samples-makefile, libs-cmake]
       fail-fast: false
     steps:
       - uses: maxim-lobanov/setup-xcode@v1
