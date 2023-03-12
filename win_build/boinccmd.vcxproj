@@ -108,7 +108,7 @@
     </Midl>
     <ClCompile>
       <Optimization>Disabled</Optimization>
-      <AdditionalIncludeDirectories>../win_build;../lib/;../api/;../RSAEuro/source/;../client/win/;../client;..;../coprocs/OpenCL/include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>../win_build;../lib/;../api/;../RSAEuro/source/;../client/win/;../client;..;../coprocs/OpenCL/include;$(VcpkgInstalledDir)/include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>WIN32;_WINDOWS;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ExceptionHandling>Async</ExceptionHandling>
       <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
@@ -134,7 +134,7 @@
       <AdditionalIncludeDirectories>..;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <Link>
-      <AdditionalDependencies>kernel32.lib;user32.lib;advapi32.lib;wsock32.lib;wininet.lib;winmm.lib;oldnames.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>zlibd.lib;Ws2_32.lib;crypt32.lib;libcrypto.lib;libssl.lib;shlwapi.lib;ixwebsocket.lib;kernel32.lib;user32.lib;advapi32.lib;wsock32.lib;wininet.lib;winmm.lib;oldnames.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <SuppressStartupBanner>true</SuppressStartupBanner>
       <IgnoreAllDefaultLibraries>false</IgnoreAllDefaultLibraries>
       <IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
@@ -143,6 +143,7 @@
       <OptimizeReferences>
       </OptimizeReferences>
       <TargetMachine>MachineX64</TargetMachine>
+      <AdditionalLibraryDirectories>$(VcpkgInstalledDir)/debug/lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|ARM64'">
@@ -156,7 +157,7 @@
     </Midl>
     <ClCompile>
       <Optimization>Disabled</Optimization>
-      <AdditionalIncludeDirectories>../win_build;../lib/;../api/;../RSAEuro/source/;../client/win/;../client;..;../coprocs/OpenCL/include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>../win_build;../lib/;../api/;../RSAEuro/source/;../client/win/;../client;..;../coprocs/OpenCL/include;$(VcpkgInstalledDir)/include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>WIN32;_WINDOWS;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ExceptionHandling>Async</ExceptionHandling>
       <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
@@ -182,7 +183,7 @@
       <AdditionalIncludeDirectories>..;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <Link>
-      <AdditionalDependencies>kernel32.lib;user32.lib;advapi32.lib;wsock32.lib;wininet.lib;winmm.lib;oldnames.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>zlibd.lib;Ws2_32.lib;crypt32.lib;libcrypto.lib;libssl.lib;shlwapi.lib;ixwebsocket.lib;kernel32.lib;user32.lib;advapi32.lib;wsock32.lib;wininet.lib;winmm.lib;oldnames.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <SuppressStartupBanner>true</SuppressStartupBanner>
       <IgnoreAllDefaultLibraries>false</IgnoreAllDefaultLibraries>
       <IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
@@ -190,6 +191,7 @@
       <SubSystem>Console</SubSystem>
       <OptimizeReferences>
       </OptimizeReferences>
+      <AdditionalLibraryDirectories>$(VcpkgInstalledDir)/debug/lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -205,7 +207,7 @@
     <ClCompile>
       <Optimization>MaxSpeed</Optimization>
       <InlineFunctionExpansion>OnlyExplicitInline</InlineFunctionExpansion>
-      <AdditionalIncludeDirectories>../win_build;../lib/;../api/;../RSAEuro/source/;../client/win/;../client;..;../coprocs/OpenCL/include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>../win_build;../lib/;../api/;../RSAEuro/source/;../client/win/;../client;..;../coprocs/OpenCL/include;$(VcpkgInstalledDir)/include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <StringPooling>true</StringPooling>
       <ExceptionHandling>Async</ExceptionHandling>
@@ -230,7 +232,7 @@
       <AdditionalIncludeDirectories>..;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <Link>
-      <AdditionalDependencies>kernel32.lib;user32.lib;advapi32.lib;wsock32.lib;wininet.lib;winmm.lib;oldnames.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>zlib.lib;Ws2_32.lib;crypt32.lib;libcrypto.lib;libssl.lib;shlwapi.lib;ixwebsocket.lib;kernel32.lib;user32.lib;advapi32.lib;wsock32.lib;wininet.lib;winmm.lib;oldnames.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <ShowProgress>NotSet</ShowProgress>
       <SuppressStartupBanner>true</SuppressStartupBanner>
       <IgnoreAllDefaultLibraries>false</IgnoreAllDefaultLibraries>
@@ -240,6 +242,7 @@
       <OptimizeReferences>true</OptimizeReferences>
       <SetChecksum>true</SetChecksum>
       <TargetMachine>MachineX64</TargetMachine>
+      <AdditionalLibraryDirectories>$(VcpkgInstalledDir)/lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|ARM64'">
@@ -254,7 +257,7 @@
     <ClCompile>
       <Optimization>MaxSpeed</Optimization>
       <InlineFunctionExpansion>OnlyExplicitInline</InlineFunctionExpansion>
-      <AdditionalIncludeDirectories>../win_build;../lib/;../api/;../RSAEuro/source/;../client/win/;../client;..;../coprocs/OpenCL/include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>../win_build;../lib/;../api/;../RSAEuro/source/;../client/win/;../client;..;../coprocs/OpenCL/include;$(VcpkgInstalledDir)/include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <StringPooling>true</StringPooling>
       <ExceptionHandling>Async</ExceptionHandling>
@@ -279,7 +282,7 @@
       <AdditionalIncludeDirectories>..;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <Link>
-      <AdditionalDependencies>kernel32.lib;user32.lib;advapi32.lib;wsock32.lib;wininet.lib;winmm.lib;oldnames.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>zlib.lib;Ws2_32.lib;crypt32.lib;libcrypto.lib;libssl.lib;shlwapi.lib;ixwebsocket.lib;kernel32.lib;user32.lib;advapi32.lib;wsock32.lib;wininet.lib;winmm.lib;oldnames.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <ShowProgress>NotSet</ShowProgress>
       <SuppressStartupBanner>true</SuppressStartupBanner>
       <IgnoreAllDefaultLibraries>false</IgnoreAllDefaultLibraries>
@@ -288,6 +291,7 @@
       <SubSystem>Console</SubSystem>
       <OptimizeReferences>true</OptimizeReferences>
       <SetChecksum>true</SetChecksum>
+      <AdditionalLibraryDirectories>$(VcpkgInstalledDir)/lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
