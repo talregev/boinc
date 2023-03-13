@@ -20,8 +20,8 @@ export CC=aarch64-linux-gnu-gcc
 export CXX=aarch64-linux-gnu-g++
 export LD=aarch64-linux-gnu-ld
 export CFLAGS="--sysroot=$TCSYSROOT -march=armv8-a"
-export CXXFLAGS="--sysroot=$TCSYSROOT -march=armv8-a"
-export LDFLAGS="-L$TCSYSROOT/usr/lib -L$TCINCLUDES/lib -march=armv8-a -static-libstdc++ -static"
+export CXXFLAGS="--sysroot=$TCSYSROOT -march=armv8-a -I/usr/local/include"
+export LDFLAGS="-L$TCSYSROOT/usr/lib -L$TCINCLUDES/lib -march=armv8-a -static-libstdc++ -static -L/usr/local/lib"
 
 MAKE_FLAGS=""
 
