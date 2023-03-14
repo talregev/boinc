@@ -24,6 +24,7 @@ export REV=1
 export ARMV6_REV=1
 export OPENSSL_VERSION=1.1.1l
 export CURL_VERSION=7.80.0
+export IXWEBSOCKET_VERSION=11.4.3
 
 # checks if a given path is canonical (absolute and does not contain relative links)
 # from http://unix.stackexchange.com/a/256437
@@ -138,6 +139,7 @@ if [ "${doclean}" = "yes" ]; then
     rm -f /tmp/ndk_armv6_${NDK_ARMV6_VERSION}.zip
     rm -f /tmp/openssl_${OPENSSL_VERSION}.tgz
     rm -f /tmp/curl_${CURL_VERSION}.tgz
+    rm -f /tmp/ixwebsocket_${IXWEBSOCKET_VERSION}.tgz
 fi
 
 if [ "${silent}" = "yes" ]; then
@@ -150,6 +152,7 @@ export NDK_FLAGFILE="$PREFIX/NDK-${NDK_VERSION}-${REV}_done"
 export NDK_ARMV6_FLAGFILE="$PREFIX/NDK-${NDK_ARMV6_VERSION}-armv6-${ARMV6_REV}_done"
 export OPENSSL_SRC=$BUILD_DIR/openssl-${OPENSSL_VERSION}
 export CURL_SRC=$BUILD_DIR/curl-${CURL_VERSION}
+export IXWEBSOCKET_SRC=$BUILD_DIR/IXWebSocket-${IXWEBSOCKET_VERSION}
 export VCPKG_ROOT="$BUILD_DIR/vcpkg"
 export ANDROID_TC=$PREFIX
 export VERBOSE=$verbose
@@ -159,10 +162,12 @@ export BUILD_WITH_VCPKG=$build_with_vcpkg
 if [ "$arch" = armv6 ]; then
     export CURL_FLAGFILE="$PREFIX/curl-${CURL_VERSION}-${NDK_ARMV6_VERSION}-${arch}_done"
     export OPENSSL_FLAGFILE="$PREFIX/openssl-${OPENSSL_VERSION}-${NDK_ARMV6_VERSION}-${arch}_done"
+    export IXWEBSOCKET_FLAGFILE="$PREFIX/IXWebSocket-${IXWEBSOCKET_VERSION}-${NDK_ARMV6_VERSION}-${arch}_done"
     export ANDROID_TC_FLAGFILE="$PREFIX/ANDROID_TC_WITH_NDK-${NDK_ARMV6_VERSION}-${arch}-${ARMV6_REV}_done"
 else
     export CURL_FLAGFILE="$PREFIX/curl-${CURL_VERSION}-${NDK_VERSION}-${arch}_done"
     export OPENSSL_FLAGFILE="$PREFIX/openssl-${OPENSSL_VERSION}-${NDK_VERSION}-${arch}_done"
+    export IXWEBSOCKET_FLAGFILE="$PREFIX/IXWebSocket-${IXWEBSOCKET_VERSION}-${NDK_VERSION}-${arch}_done"
     export ANDROID_TC_FLAGFILE="$PREFIX/ANDROID_TC_WITH_NDK-${NDK_VERSION}-${arch}-${REV}_done"
 fi
 
@@ -211,6 +216,12 @@ if [ $build_with_vcpkg = "no" ]; then
         wget -c --no-verbose -O /tmp/curl_${CURL_VERSION}.tgz https://curl.haxx.se/download/curl-${CURL_VERSION}.tar.gz
         tar xzf /tmp/curl_${CURL_VERSION}.tgz --directory=$BUILD_DIR
     fi
+
+    if [ ! -e "${IXWEBSOCKET_FLAGFILE}" ]; then
+        rm -rf "$BUILD_DIR/ixwebsocket-${IXWEBSOCKET_VERSION}"
+        wget -c --no-verbose -O /tmp/ixwebsocket_${IXWEBSOCKET_VERSION}.tgz https://github.com/machinezone/IXWebSocket/archive/refs/tags/v${IXWEBSOCKET_VERSION}.tar.gz
+        tar xzf /tmp/ixwebsocket_${IXWEBSOCKET_VERSION}.tgz --directory=$BUILD_DIR
+    fi    
 fi
 
 getTripletName()
@@ -417,13 +428,16 @@ case "$arch" in
         case "$component" in
             "client")
                 ./build_openssl_armv6.sh
-                ./build_curl_armv6.sh
+                ./build_ixwebsocket_armv6.sh
+                ./build_curl_armv6.sh                
                 ./build_boinc_armv6.sh
                 NeonTestClient
                 Armv6TestClient
                 exit 0
             ;;
             "libs")
+                ./build_openssl_armv6.sh
+                ./build_ixwebsocket_armv6.sh
                 ./build_libraries_armv6.sh
                 NeonTestLibs
                 Armv6TestLibs
@@ -431,7 +445,8 @@ case "$arch" in
             ;;
             "apps")
                 ./build_openssl_armv6.sh
-                ./build_curl_armv6.sh
+                ./build_ixwebsocket_armv6.sh
+                ./build_curl_armv6.sh                
                 ./build_libraries_armv6.sh
                 ./build_example_armv6.sh
                 NeonTestLibs
@@ -453,19 +468,23 @@ case "$arch" in
         case "$component" in
             "client")
                 ./build_openssl_arm.sh
-                ./build_curl_arm.sh
+                ./build_ixwebsocket_arm.sh
+                ./build_curl_arm.sh                
                 ./build_boinc_arm.sh
                 NeonTestClient
                 exit 0
             ;;
             "libs")
+                ./build_openssl_arm.sh
+                ./build_ixwebsocket_arm.sh
                 ./build_libraries_arm.sh
                 NeonTestLibs
                 exit 0
             ;;
             "apps")
                 ./build_openssl_arm.sh
-                ./build_curl_arm.sh
+                ./build_ixwebsocket_arm.sh
+                ./build_curl_arm.sh                
                 ./build_libraries_arm.sh
                 ./build_example_arm.sh
                 NeonTestLibs
@@ -485,16 +504,20 @@ case "$arch" in
         case "$component" in
             "client")
                 ./build_openssl_arm64.sh
+                ./build_ixwebsocket_arm64.sh
                 ./build_curl_arm64.sh
                 ./build_boinc_arm64.sh
                 exit 0
             ;;
             "libs")
+                ./build_openssl_arm64.sh
+                ./build_ixwebsocket_arm64.sh
                 ./build_libraries_arm64.sh
                 exit 0
             ;;
             "apps")
                 ./build_openssl_arm64.sh
+                ./build_ixwebsocket_arm64.sh
                 ./build_curl_arm64.sh
                 ./build_libraries_arm64.sh
                 ./build_example_arm64.sh
@@ -513,16 +536,20 @@ case "$arch" in
         case "$component" in
             "client")
                 ./build_openssl_x86.sh
+                ./build_ixwebsocket_x86.sh
                 ./build_curl_x86.sh
                 ./build_boinc_x86.sh
                 exit 0
             ;;
             "libs")
+                ./build_openssl_x86.sh
+                ./build_ixwebsocket_x86.sh            
                 ./build_libraries_x86.sh
                 exit 0
             ;;
             "apps")
                 ./build_openssl_x86.sh
+                ./build_ixwebsocket_x86.sh
                 ./build_curl_x86.sh
                 ./build_libraries_x86.sh
                 ./build_example_x86.sh
@@ -541,16 +568,20 @@ case "$arch" in
         case "$component" in
             "client")
                 ./build_openssl_x86_64.sh
+                ./build_ixwebsocket_x86_64.sh
                 ./build_curl_x86_64.sh
                 ./build_boinc_x86_64.sh
                 exit 0
             ;;
             "libs")
+                ./build_openssl_x86_64.sh
+                ./build_ixwebsocket_x86_64.sh
                 ./build_libraries_x86_64.sh
                 exit 0
             ;;
             "apps")
                 ./build_openssl_x86_64.sh
+                ./build_ixwebsocket_x86_64.sh
                 ./build_curl_x86_64.sh
                 ./build_libraries_x86_64.sh
                 ./build_example_x86_64.sh
