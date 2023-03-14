@@ -22,8 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        type: [libs-cmake]
-        # type: [manager, libs, apps, manager-vcpkg, libs-vcpkg, apps-vcpkg, libs-cmake]
+        type: [manager, libs, apps, manager-vcpkg, libs-vcpkg, apps-vcpkg, libs-cmake]
       fail-fast: false
     steps:
       - uses: actions/checkout@v3
