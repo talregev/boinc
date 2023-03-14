@@ -28,9 +28,11 @@ export VCPKG_DIR=$VCPKG_ROOT/installed/x64-android
 
 CONFIG_FLAGS=""
 CONFIG_LDFLAGS=""
+CONFIG_CXXFLAGS=""
 
 if [ $BUILD_WITH_VCPKG = "yes" ]; then
     CONFIG_LDFLAGS="-L$VCPKG_DIR/lib"
+    CONFIG_CXXFLAGS="-I$VCPKG_DIR/include"
     CONFIG_FLAGS="--with-ssl=$VCPKG_DIR --with-libcurl=$VCPKG_DIR"
     export _libcurl_pc="$VCPKG_DIR/lib/pkgconfig/libcurl.pc"
 else
@@ -44,7 +46,7 @@ export CC=x86_64-linux-android21-clang
 export CXX=x86_64-linux-android21-clang++
 export LD=x86_64-linux-android-ld
 export CFLAGS="--sysroot=$TCSYSROOT -DANDROID -DANDROID_64 -DDECLARE_TIMEZONE -Wall -I$TCINCLUDES/include -O3 -fomit-frame-pointer -fPIE -D__ANDROID_API__=21"
-export CXXFLAGS="--sysroot=$TCSYSROOT -DANDROID -DANDROID_64 -Wall -I$TCINCLUDES/include -funroll-loops -fexceptions -O3 -fomit-frame-pointer -fPIE -D__ANDROID_API__=21"
+export CXXFLAGS="$CONFIG_CXXFLAGS --sysroot=$TCSYSROOT -std=c++11 -DANDROID -DANDROID_64 -Wall -I$TCINCLUDES/include -funroll-loops -fexceptions -O3 -fomit-frame-pointer -fPIE -D__ANDROID_API__=21"
 export LDFLAGS="$CONFIG_LDFLAGS -llog -fPIE -pie -latomic -static-libstdc++"
 export GDB_CFLAGS="--sysroot=$TCSYSROOT -Wall -g -I$TCINCLUDES/include"
 export PKG_CONFIG_SYSROOT_DIR="$TCSYSROOT"

@@ -21,6 +21,8 @@
 
 #include "cpp.h"
 
+#include <ixwebsocket/IXNetSystem.h>
+
 #ifdef WIN32
 #include "boinc_win.h"
 #include "sysmon_win.h"
@@ -416,7 +418,7 @@ int boinc_main_loop() {
 
 int main(int argc, char** argv) {
     int retval = 0;
-
+    ix::initNetSystem();
     coprocs.set_path_to_client(argv[0]);    // Used to launch a child process for --detect_gpus
 
     for (int index = 1; index < argc; index++) {
@@ -555,5 +557,6 @@ int main(int argc, char** argv) {
 
 #endif
     main_exited = true;
+    ix::uninitNetSystem();
     return retval;
 }
