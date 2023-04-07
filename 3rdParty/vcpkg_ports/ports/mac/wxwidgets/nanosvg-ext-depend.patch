@@ -1,0 +1,17 @@
+diff --git a/build/cmake/lib/nanosvg.cmake b/build/cmake/lib/nanosvg.cmake
+index 401bf48..b9e4b57 100644
+--- a/build/cmake/lib/nanosvg.cmake
++++ b/build/cmake/lib/nanosvg.cmake
+@@ -16,9 +16,9 @@ elseif(wxUSE_NANOSVG)
+     set(NANOSVG_INCLUDE_DIRS )
+     set(wxUSE_NANOSVG_EXTERNAL_ENABLE_IMPL TRUE)
+ 
+-    find_package(NanoSVG REQUIRED)
++    find_package(NanoSVG CONFIG REQUIRED)
+ 
+-    foreach(TARGETNAME NanoSVG::nanosvg NanoSVG::nanosvgrast unofficial::nanosvg)
++    foreach(TARGETNAME NanoSVG::nanosvg NanoSVG::nanosvgrast)
+         if(NOT TARGET ${TARGETNAME})
+             continue()
+         endif()
+
