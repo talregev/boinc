@@ -1,0 +1,44 @@
+{
+    "name": "boinc-manager",
+    "builtin-baseline": "19af97cba8ca48474e4ad15a24ed50271a9ecdac",
+    "dependencies":
+    [
+        "ftgl",
+        {
+          "name": "curl",
+          "features": ["openssl","c-ares"],
+          "default-features": false
+        },
+        {
+          "name": "wxwidgets",
+          "default-features": false
+        }
+    ],
+    "overrides": [
+        {
+          "name": "openssl",
+          "version": "3.0.2",
+          "port-version": 0
+        },
+        {
+          "name": "c-ares",
+          "version": "1.17.2",
+          "port-version": 2
+        },
+        {
+          "name": "curl",
+          "version": "7.79.1",
+          "port-version": 0
+        },
+        {
+          "name": "freetype",
+          "version": "2.11.0",
+          "port-version": 2
+        },
+        {
+          "name": "ftgl",
+          "version": "2.3.1",
+          "port-version": 0
+        }
+    ]
+}
