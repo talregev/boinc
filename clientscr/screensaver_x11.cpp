@@ -480,7 +480,9 @@ int main(int argc, char *argv[]) {
         stream << boinc_wd << "/slots/" << result->slot << "/";
         std::string slot_dir = stream.str();
         if (chdir(slot_dir.c_str())) {
-            perror("chdir");
+            stream.str("");
+            stream << "chdir: " << slot_dir;
+            perror(stream.str().c_str());
             exit(1);
         }
 
