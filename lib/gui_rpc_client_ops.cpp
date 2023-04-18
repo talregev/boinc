@@ -2831,3 +2831,7 @@ int RPC_CLIENT::set_language(const char* language) {
 	if (retval) return retval;
 	return rpc.parse_reply();
 }
+
+void RPC_CLIENT::set_websocket_mode(bool is_websocket) {
+    this->is_websocket = is_websocket;
+}

@@ -21,6 +21,8 @@
 #include "network.h"
 #include "acct_setup.h"
 
+#include <ixwebsocket/IXWebSocketServer.h>
+
 // FSM states for auto-update
 
 #define AU_SS_INIT          0
@@ -40,8 +42,12 @@
 #define GUI_RPC_REQ_MSG_SIZE    100000
 
 class GUI_RPC_CONN {
+    void init_gui_rpc_conn();
 public:
     int sock;
+    ix::WebSocket* client;
+    const ix::WebSocketMessagePtr* msg;
+    bool is_websocket;
     MIOFILE mfout;
     MFILE mout;
     MIOFILE mfin;
@@ -84,6 +90,7 @@ public:
         return notice_refresh;
     }
     GUI_RPC_CONN(int);
+    GUI_RPC_CONN(ix::WebSocket&);
     ~GUI_RPC_CONN();
     int handle_rpc();
     void handle_auth1(MIOFILE&);
@@ -106,6 +113,7 @@ class GUI_RPC_CONN_SET {
     bool remote_hosts_configured;
 public:
     int lsock;
+    ix::WebSocketServer* server;
     double time_of_last_rpc_needing_network;
         // time of the last RPC that needs network access to handle
 
@@ -115,6 +123,7 @@ public:
     void got_select(FDSET_GROUP&);
     int init_tcp(bool last_time);
     int init_unix_domain();
+    int init_websocket();
     void close();
     bool recent_rpc_needs_network(double interval);
     void send_quits();

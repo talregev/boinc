@@ -27,6 +27,8 @@
 #include "sandbox.h"
 #endif
 
+#include <ixwebsocket/IXNetSystem.h>
+
 #include "stdwx.h"
 #include "diagnostics.h"
 #include "network.h"
@@ -68,6 +70,7 @@ BEGIN_EVENT_TABLE (CBOINCGUIApp, wxApp)
 END_EVENT_TABLE ()
 
 bool CBOINCGUIApp::OnInit() {
+    ix::initNetSystem();
     // Initialize globals
 #ifdef SANDBOX
     g_use_sandbox = true;
@@ -118,6 +121,7 @@ bool CBOINCGUIApp::OnInit() {
     m_bSafeMessageBoxDisplayed = 0;
     m_bRunDaemon = true;
     m_bNeedRunDaemon = true;
+    m_bWebSocket = false;
 
     // Initialize local variables
     int      iDesiredLanguageCode = 0;
@@ -426,6 +430,8 @@ bool CBOINCGUIApp::OnInit() {
 
     // Initialize the main document
     m_pDocument = new CMainDocument();
+    m_pDocument->SetWebSocketMode(m_bWebSocket);
+
     wxASSERT(m_pDocument);
 
     m_pDocument->OnInit();
@@ -568,6 +574,7 @@ int CBOINCGUIApp::OnExit() {
 #ifndef __WXMAC__
 // Ensure we shut down gracefully on Windows logout or shutdown
 void CBOINCGUIApp::OnEndSession(wxCloseEvent& ) {
+    ix::uninitNetSystem();
     s_bSkipExitConfirmation = true;
 
     // On Windows Vista with UAC turned on, we have to spawn a new process to change the
@@ -631,6 +638,7 @@ void CBOINCGUIApp::OnInitCmdLine(wxCmdLineParser &parser) {
     parser.AddLongOption("NSDocumentRevisionsDebugMode", _("Not used: workaround for bug in XCode 4.2"));
 #endif
     parser.AddSwitch("nd", "no-daemon", _("Don't run the client"));
+    parser.AddSwitch("w", "websocket", _("Launch boinc in websocket mode. Expermental feature"));
 }
 
 
@@ -709,6 +717,9 @@ bool CBOINCGUIApp::OnCmdLineParsed(wxCmdLineParser &parser) {
 
     if (parser.Found(wxT("no-daemon"))) {
         m_bNeedRunDaemon = false;
+    }
+    if (parser.Found(wxT("websocket"))) {
+        m_bWebSocket = true;
     }
     return true;
 }
