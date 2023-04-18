@@ -68,6 +68,7 @@ CBOINCClientManager::CBOINCClientManager() {
     m_lBOINCCoreProcessId = 0;
     m_fAutoRestart1Time = 0;
     m_fAutoRestart2Time = 0;
+    m_bWebSocket = false;
 
 #ifdef __WXMSW__
     m_hBOINCCoreProcess = NULL;
@@ -209,10 +210,14 @@ bool CBOINCClientManager::StartupBOINCCore() {
         m_bBOINCStartedByManager = true;
         bReturnValue = IsBOINCCoreRunning();
     } else {
-
+        wxString boinc_command = wxT("\"%sboinc.exe\" --redirectio --launched_by_manager %s");
+        if (m_bWebSocket) {
+            boinc_command += wxT(" --websocket");
+        }
+        
         // Append boinc.exe to the end of the strExecute string and get ready to rock
         strExecute.Printf(
-            wxT("\"%sboinc.exe\" --redirectio --launched_by_manager %s"),
+            boinc_command,
             wxGetApp().GetRootDirectory().c_str(),
             wxGetApp().GetArguments().c_str()
         );
@@ -310,9 +315,14 @@ bool CBOINCClientManager::StartupBOINCCore() {
     wxString savedWD = ::wxGetCwd();
     
     wxSetWorkingDirectory(wxGetApp().GetDataDirectory());
-    
+
+    wxString boinc_command = wxT("boinc --redirectio --launched_by_manager");
+    if (m_bWebSocket) {
+        boinc_command += wxT(" --websocket");
+    }
+
     // Append boinc.exe to the end of the strExecute string and get ready to rock
-    strExecute = wxGetApp().GetRootDirectory() + wxT("boinc --redirectio --launched_by_manager");
+    strExecute = wxGetApp().GetRootDirectory() + boinc_command;
 #ifdef SANDBOX
     if (!g_use_sandbox) {
         strExecute += wxT(" --insecure");
@@ -447,6 +457,7 @@ void CBOINCClientManager::ShutdownBOINCCore(bool ShuttingDownManager) {
         pDoc->GetConnectedComputerName(strConnectedCompter);
         if (!pDoc->IsComputerNameLocal(strConnectedCompter)) {
             RPC_CLIENT rpc;
+            rpc.set_websocket_mode(m_bWebSocket);
             if (!rpc.init("localhost")) {
                 pDoc->m_pNetworkConnection->GetLocalPassword(strPassword);
                 rpc.authorize((const char*)strPassword.mb_str());
@@ -512,6 +523,9 @@ void CBOINCClientManager::ShutdownBOINCCore(bool ShuttingDownManager) {
     wxLogTrace(wxT("Function Start/End"), wxT("CBOINCClientManager::ShutdownBOINCCore - Function End"));
 }
 
+void CBOINCClientManager::SetWebSocketMode(bool IsWebSocket) {
+    m_bWebSocket = IsWebSocket;
+}
 
 BEGIN_EVENT_TABLE(ClientCrashDlg, wxDialog)
     EVT_BUTTON(wxID_HELP, ClientCrashDlg::OnHelp)
