@@ -19,3 +19,4 @@ fi
 
 git -C $VCPKG_ROOT pull
 $VCPKG_ROOT/bootstrap-vcpkg.sh
+$VCPKG_ROOT/vcpkg install ogre-next
