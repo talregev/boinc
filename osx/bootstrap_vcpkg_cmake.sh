@@ -20,3 +20,6 @@ fi
 git -C $VCPKG_ROOT pull
 $VCPKG_ROOT/bootstrap-vcpkg.sh
 $VCPKG_ROOT/vcpkg install ogre-next
+ls $VCPKG_ROOT/installed/x64-osx/lib
+ls $VCPKG_ROOT/installed/x64-osx/lib/Release
+ls $VCPKG_ROOT/installed/x64-osx/lib/manual-link

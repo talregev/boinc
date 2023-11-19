@@ -116,6 +116,12 @@ jobs:
 
       - name: libs cmake
         run: |
+          # export LIBRARY_PATH="$LIBRARY_PATH:/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/lib"
+          # brew reinstall gfortran
+          # python3 -m pip install distutils
+          # wget https://bootstrap.pypa.io/get-pip.py
+          # python3 get-pip.py
+          # brew install nasm automake libxaw
           osx/ci_build_libs_cmake.sh
 
       - name: Prepare logs on failure
