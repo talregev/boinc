@@ -19,6 +19,11 @@
         "default-features": false
       },
       "gtest",
-      "opencl"
+      "opencl",
+      {
+        "name": "ixwebsocket",
+        "features": ["openssl"],          
+        "default-features": false
+      }
   ]
 }

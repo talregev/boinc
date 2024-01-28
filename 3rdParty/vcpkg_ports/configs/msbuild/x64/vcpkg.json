@@ -20,6 +20,11 @@
         },
         "gtest",
         "ftgl",
-        "opencl"
+        "opencl",
+        {
+          "name": "ixwebsocket",
+          "features": ["openssl"],          
+          "default-features": false
+        }
     ]
 }
