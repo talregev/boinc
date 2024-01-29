@@ -221,8 +221,8 @@ jobs:
         run: |
           sed -i -e 's/archive.ubuntu.com\|security.ubuntu.com/old-releases.ubuntu.com/g' /etc/apt/sources.list
           apt-get -qq update
-          apt-get install -y make build-essential m4 pkg-config autoconf libtool git libcurl4-openssl-dev p7zip-full python3
-          linux/ci_compile_ixwebsocket.sh
+          apt-get install -y make build-essential m4 pkg-config autoconf libtool git libcurl4-openssl-dev p7zip-full python3 cmake tar ca-certificates wget
+          linux/ci_docker_compile_ixwebsocket.sh
 
       - name: Install dependencies for x64
         if: success() && matrix.type == 'apps'
@@ -248,7 +248,7 @@ jobs:
         if: success() && matrix.type == 'apps'
         run: |
           export CFLAGS="-O3"
-          export CXXFLAGS="-O3"
+          export CXXFLAGS="-std=c++11 -O3"
           export LDFLAGS="-static-libstdc++ -s"
           export RELEASE_ARCH=x86_64
           ./configure --enable-apps --enable-apps-vbox --disable-server --disable-client --disable-manager
@@ -258,7 +258,7 @@ jobs:
         if: success() && matrix.type == 'apps-x86'
         run: |
           export CFLAGS="-O3 -m32"
-          export CXXFLAGS="-O3 -m32"
+          export CXXFLAGS="-std=c++11 -O3 -m32"
           export LDFLAGS="-static-libstdc++ -s -m32"
           export RELEASE_ARCH=i686
           ./configure --enable-apps --enable-apps-vbox --disable-server --disable-client --disable-manager --host=i686-linux-gnu
@@ -303,9 +303,9 @@ jobs:
       - name: Install dependencies
         run: |
           apt-get -qq update
-          apt-get install -y make build-essential m4 pkg-config autoconf libtool git
-          linux/ci_compile_ixwebsocket.sh
-
+          apt-get install -y make build-essential m4 pkg-config autoconf libtool git cmake tar ca-certificates wget zlib1g-dev
+          linux/ci_docker_arm64_compile_ixwebsocket.sh
+ 
       - name: Install dependencies for arm64
         if: success()
         run: |
