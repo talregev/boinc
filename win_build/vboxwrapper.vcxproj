@@ -137,14 +137,14 @@
       <AdditionalIncludeDirectories>..;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <Link>
-      <AdditionalDependencies>libcmt.lib;libcpmt.lib;atls.lib;comsuppw.lib;kernel32.lib;user32.lib;gdi32.lib;ole32.lib;wsock32.lib;psapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>libcmt.lib;libcpmt.lib;atls.lib;comsuppw.lib;zlib.lib;Ws2_32.lib;crypt32.lib;libcrypto.lib;libssl.lib;shlwapi.lib;ixwebsocket.lib;kernel32.lib;user32.lib;gdi32.lib;ole32.lib;wsock32.lib;psapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <SuppressStartupBanner>true</SuppressStartupBanner>
       <IgnoreAllDefaultLibraries>false</IgnoreAllDefaultLibraries>
       <DelayLoadDLLs>%(DelayLoadDLLs)</DelayLoadDLLs>
       <ProgramDatabaseFile>$(TargetDir)\$(TargetName).pdb</ProgramDatabaseFile>
       <SubSystem>Console</SubSystem>
       <TargetMachine>MachineX64</TargetMachine>
-      <AdditionalLibraryDirectories>$(TargetDir)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>$(TargetDir);$(VcpkgInstalledDir)/lib</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|ARM64'">
@@ -182,13 +182,13 @@
       <AdditionalIncludeDirectories>..;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <Link>
-      <AdditionalDependencies>libcmt.lib;libcpmt.lib;atls.lib;comsuppw.lib;kernel32.lib;user32.lib;gdi32.lib;ole32.lib;wsock32.lib;psapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>libcmt.lib;libcpmt.lib;atls.lib;comsuppw.lib;zlib.lib;Ws2_32.lib;crypt32.lib;libcrypto.lib;libssl.lib;shlwapi.lib;ixwebsocket.lib;kernel32.lib;user32.lib;gdi32.lib;ole32.lib;wsock32.lib;psapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <SuppressStartupBanner>true</SuppressStartupBanner>
       <IgnoreAllDefaultLibraries>false</IgnoreAllDefaultLibraries>
       <DelayLoadDLLs>%(DelayLoadDLLs)</DelayLoadDLLs>
       <ProgramDatabaseFile>$(TargetDir)\$(TargetName).pdb</ProgramDatabaseFile>
       <SubSystem>Console</SubSystem>
-      <AdditionalLibraryDirectories>$(TargetDir)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>$(TargetDir);$(VcpkgInstalledDir)/lib</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
@@ -223,14 +223,14 @@
       <AdditionalIncludeDirectories>..;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <Link>
-      <AdditionalDependencies>libcmtd.lib;libcpmtd.lib;atls.lib;comsuppwd.lib;kernel32.lib;user32.lib;gdi32.lib;ole32.lib;wsock32.lib;psapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>libcmtd.lib;libcpmtd.lib;atls.lib;comsuppwd.lib;zlibd.lib;Ws2_32.lib;crypt32.lib;libcrypto.lib;libssl.lib;shlwapi.lib;ixwebsocket.lib;kernel32.lib;user32.lib;gdi32.lib;ole32.lib;wsock32.lib;psapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <SuppressStartupBanner>true</SuppressStartupBanner>
       <IgnoreAllDefaultLibraries>false</IgnoreAllDefaultLibraries>
       <DelayLoadDLLs>%(DelayLoadDLLs)</DelayLoadDLLs>
       <ProgramDatabaseFile>$(TargetDir)\$(TargetName).pdb</ProgramDatabaseFile>
       <SubSystem>Console</SubSystem>
       <TargetMachine>MachineX64</TargetMachine>
-      <AdditionalLibraryDirectories>$(TargetDir)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>$(TargetDir);$(VcpkgInstalledDir)/debug/lib</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|ARM64'">
@@ -264,13 +264,13 @@
       <AdditionalIncludeDirectories>..;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <Link>
-      <AdditionalDependencies>libcmtd.lib;libcpmtd.lib;atls.lib;comsuppwd.lib;kernel32.lib;user32.lib;gdi32.lib;ole32.lib;wsock32.lib;psapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>libcmtd.lib;libcpmtd.lib;atls.lib;comsuppwd.lib;zlibd.lib;Ws2_32.lib;crypt32.lib;libcrypto.lib;libssl.lib;shlwapi.lib;ixwebsocket.lib;kernel32.lib;user32.lib;gdi32.lib;ole32.lib;wsock32.lib;psapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <SuppressStartupBanner>true</SuppressStartupBanner>
       <IgnoreAllDefaultLibraries>false</IgnoreAllDefaultLibraries>
       <DelayLoadDLLs>%(DelayLoadDLLs)</DelayLoadDLLs>
       <ProgramDatabaseFile>$(TargetDir)\$(TargetName).pdb</ProgramDatabaseFile>
       <SubSystem>Console</SubSystem>
-      <AdditionalLibraryDirectories>$(TargetDir)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>$(TargetDir);$(VcpkgInstalledDir)/debug/lib</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>

@@ -14,7 +14,7 @@ VCPKG_PORTS="$PWD/3rdParty/vcpkg_ports"
 
 $PLATFORM_NAME/bootstrap_vcpkg_cmake.sh
 
-TRIPLETS_LIST="x64-osx arm64-osx"
+TRIPLETS_LIST="arm64-osx-release x64-osx-release"
 
 for TRIPLET in $TRIPLETS_LIST ; do
     echo "\033[0;35m building $TRIPLET ... \033[0m"
