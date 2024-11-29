@@ -1,0 +1,15 @@
+diff --git a/pcre2/vcpkg.json b/pcre2/vcpkg.json
+--- a/pcre2/vcpkg.json
++++ b/pcre2/vcpkg.json
+@@ -14,11 +14,8 @@
+       "name": "vcpkg-cmake-config",
+       "host": true
+     }
+   ],
+-  "default-features": [
+-    "platform-default-features"
+-  ],
+   "features": {
+     "jit": {
+       "description": "Enable support for Just-In-Time compiling regex matchers",
+       "supports": "!emscripten"
