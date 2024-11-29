@@ -23,12 +23,12 @@ $VCPKG_ROOT/bootstrap-vcpkg.sh
 rm -rf $VCPKG_PORTS/ports/mac/*
 
 # create custom ports base on latest ports with patches
-cp -R $VCPKG_ROOT/ports/pcre2 $VCPKG_PORTS/ports/mac
+# cp -R $VCPKG_ROOT/ports/pcre2 $VCPKG_PORTS/ports/mac
 cp -R $VCPKG_ROOT/ports/wxwidgets $VCPKG_PORTS/ports/mac
 cp $VCPKG_PORTS/patches/boinc_SetItemBitmap.patch $VCPKG_PORTS/patches/boinc_SetVisibilityHidden.patch  $VCPKG_PORTS/ports/mac/wxwidgets
 
 # apply patches
-patch -p1 -d $VCPKG_PORTS/ports/mac -i $VCPKG_PORTS/patches/pcre2.patch
+# patch -p1 -d $VCPKG_PORTS/ports/mac -i $VCPKG_PORTS/patches/pcre2.patch
 patch -p1 -d $VCPKG_PORTS/ports/mac -i $VCPKG_PORTS/patches/wxwidgets.patch
 
 $VCPKG_ROOT/vcpkg install  --x-manifest-root=3rdParty/vcpkg_ports/configs/manager/osx --x-install-root=$VCPKG_ROOT/installed/arm64/ --overlay-ports=$VCPKG_PORTS/ports/mac --overlay-triplets=$VCPKG_PORTS/triplets/ci --triplet=arm64-osx --clean-after-build
