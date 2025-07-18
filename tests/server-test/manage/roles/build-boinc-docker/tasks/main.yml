@@ -1,5 +1,21 @@
+- name: Copy build yml file to build with docker
+  copy:
+    src: config/boinc-server-docker-build.yml
+    dest: "{{base_dir}}/boinc-server-docker/boinc-server-docker-build.yml"
+
+- name: Copy build docker file to build ixwebsocket
+  copy:
+    src: config/Dockerfile
+    dest: "{{base_dir}}/boinc-server-docker/Dockerfile"
+
 - name: Build BOINC in docker container
-  shell: TAG='' docker compose build --no-cache
+  shell: TAG='' docker compose docker build -t makeproject .
+  args:
+    chdir: "{{base_dir}}/boinc-server-docker"
+  tags: build,boinc
+
+- name: Build BOINC in docker container
+  shell: TAG='' docker compose -f boinc-server-docker-build.yml build --no-cache
   args:
     chdir: "{{base_dir}}/boinc-server-docker"
   tags: build,boinc

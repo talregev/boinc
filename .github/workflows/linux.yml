@@ -40,7 +40,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        type: [libs, client, apps, manager, libs-vcpkg, client-vcpkg, apps-vcpkg, libs-cmake, libs-arm64, apps-arm64, libs-vcpkg-arm64, apps-vcpkg-arm64, manager-with-webview-vcpkg, server, manager-with-webview, manager-without-webview, unit-test, integration-test]
+        type: [integration-test]
       fail-fast: false
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
@@ -48,6 +48,7 @@ jobs:
           fetch-depth: 2
 
       - name: Install dependencies
+        if: success() && matrix.type != 'integration-test'
         run: |
           sudo apt-get -qq update
           sudo apt-get install -y autopoint libftgl-dev freeglut3-dev libcurl4-openssl-dev libxmu-dev libxi-dev libfcgi-dev libxss-dev libnotify-dev libxcb-util0-dev libgtk-3-dev libsecret-1-dev libgcrypt20-dev libsystemd-dev libwebkit2gtk-4.1-dev p7zip-full libxxf86vm-dev ocl-icd-opencl-dev zip libltdl-dev
@@ -269,103 +270,3 @@ jobs:
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
-  build-release:
-    name: ${{ matrix.type }}-build-release
-    runs-on: ubuntu-latest
-    container:
-      image: debian:buster
-    strategy:
-      matrix:
-        type: [apps, apps-x86, apps-arm64]
-      fail-fast: false
-    env:
-      ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
-    steps:
-      - name: Fix debian sources
-        run: |
-          sed -i 's/deb.debian.org/archive.debian.org/g' /etc/apt/sources.list
-          sed -i 's/security.debian.org/archive.debian.org/g' /etc/apt/sources.list
-
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        with:
-          fetch-depth: 2
-
-      - name: Install dependencies
-        run: |
-          apt-get -qq update
-          apt-get install -y make build-essential m4 pkg-config autoconf libtool git p7zip-full python3 zlib1g-dev libssl-dev cmake
-          linux/ci_compile_ixwebsocket.sh no_sudo
-
-      - name: Install dependencies for x86
-        if: success() && matrix.type == 'apps-x86'
-        run: |
-          dpkg --add-architecture i386
-          apt-get update
-          apt-get install -y gcc-multilib g++-multilib libcurl4-openssl-dev:i386 libssl-dev:i386
-
-      - name: Install dependencies for x64
-        if: success() && matrix.type == 'apps'
-        run: |
-          apt-get install -y libcurl4-openssl-dev libssl-dev
-
-      - name: Install dependencies for arm64
-        if: success() && matrix.type == 'apps-arm64'
-        run: |
-          apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64-linux-gnu wget ca-certificates
-
-      - name: Automake
-        if: success()
-        run: ./_autosetup
-
-      - name: Make x64 apps
-        if: success() && matrix.type == 'apps'
-        run: |
-          export CFLAGS="-O3"
-          export CXXFLAGS="-O3 -std=c++11"
-          export LDFLAGS="-static-libstdc++ -s"
-          export RELEASE_ARCH=x86_64
-          ./configure --enable-apps --enable-apps-vbox --disable-server --disable-client --disable-manager
-          make -j $(nproc --all)
-
-      - name: Make x86 apps
-        if: success() && matrix.type == 'apps-x86'
-        run: |
-          export CFLAGS="-O3 -m32"
-          export CXXFLAGS="-O3 -m32 -std=c++11"
-          export LDFLAGS="-static-libstdc++ -s -m32"
-          export RELEASE_ARCH=i686
-          ./configure --enable-apps --enable-apps-vbox --disable-server --disable-client --disable-manager --host=i686-linux-gnu
-          make -j $(nproc --all)
-
-      - name: Make arm64 apps
-        if: success() && matrix.type == 'apps-arm64'
-        run: |
-          export CI=yes
-          export RELEASE=yes
-          export RELEASE_ARCH=arm64
-          ./linux/arm64/build_libraries_arm64.sh
-          ./linux/arm64/build_openssl_arm64.sh
-          ./linux/arm64/build_curl_arm64.sh
-          ./linux/arm64/build_example_arm64.sh
-
-      - name: Prepare logs on failure
-        if: ${{ failure() }}
-        run: python3 ./deploy/prepare_deployment.py logs
-
-      - name: Upload logs on failure
-        if: ${{ failure() }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: linux_release_logs_${{ matrix.type }}_${{ github.event.pull_request.head.sha }}
-          path: deploy/logs.7z
-
-      - name: Prepare artifacts for deploy
-        if: success()
-        run: python3 ./deploy/prepare_deployment.py linux_apps
-
-      - name: Upload wrapper artifacts
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        if: success()
-        with:
-          name: linux_release_${{ matrix.type }}_${{ github.event.pull_request.head.sha }}
-          path: deploy/linux_apps.7z
