@@ -335,12 +335,19 @@ The client now **boots, runs its main loop, and is driven live in Chrome** — n
   wasm main loop. **Proven in Chrome**: a live `get_project_config` GUI RPC drove a real `HTTP_OP`
   GET through `emscripten_fetch` and returned the parsed `<project_config>`.
 
+Transport proofs (all in Chrome, `wasm/browser/fetch_test.c` + the client harness):
+- **GET round-trip through HTTP_OP** — `get_project_config` returned the parsed `<project_config>`.
+- **POST body transmission** — `emscripten_fetch` POST; the dev server logged the exact request body
+  (`server-post` record in `runs.jsonl`).
+- **Cross-origin CORS** — a cross-origin GET to a second origin (`:8001`) with
+  `Access-Control-Allow-Origin` succeeded through the page's COOP/COEP isolation.
+
 ### Remaining
-- **POST/scheduler round-trip** — the POST path (`wasm_fetch_exec` with `is_post`) is implemented but
-  only the GET round-trip is proven; a mock scheduler is needed to prove `project_attach` end-to-end.
-- **Cross-origin CORS** — proven same-origin; a real project must send `Access-Control-Allow-Origin`
-  (browser-side concern, no transport change).
-- The Worker + SharedArrayBuffer process model (to actually run science apps) is **Phase 3**.
+- **Full project-attach → scheduler round-trip** — the POST *transport* is proven, but an end-to-end
+  `project_attach` (client POSTs a `scheduler_request` and parses a `scheduler_reply`) needs a mock
+  project (master file + scheduler). That's an **integration** test that belongs with the demo
+  project server (**Phase 7**), not a transport gap. (Account-manager RPCs additionally require HTTPS.)
+- The Worker + SharedArrayBuffer process model (to actually *run* science apps) is **Phase 3**.
 
 ---
 

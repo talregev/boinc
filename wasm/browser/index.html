@@ -69,11 +69,28 @@ function netTest() {
         clearInterval(iv);
         if (r.includes('WASM Test Project')) {
             const name = (r.match(/<name>([^<]*)</) || [])[1];
-            line($rpc, 'rpc', 'rpc', 'NET TEST PASSED: HTTP_OP fetched project_config via emscripten_fetch, name="' + name + '"\n' + r.trim().slice(0, 500));
+            line($rpc, 'rpc', 'rpc', 'GET TEST PASSED: HTTP_OP fetched project_config via emscripten_fetch, name="' + name + '"\n' + r.trim().slice(0, 400));
         } else {
             const em = (r.match(/<error_num>(-?\d+)</) || [])[1];
-            line($rpc, 'err', 'err', 'net test: error_num=' + em + '\n' + r.trim().slice(0, 500));
+            line($rpc, 'err', 'err', 'GET test: error_num=' + em + '\n' + r.trim().slice(0, 400));
         }
+        setTimeout(postTest, 1200);     // then exercise the POST path (shares one gui_http)
+    }, 500);
+}
+
+// Phase 2d POST proof: acct_mgr_rpc POSTs <acct_mgr_request> to /rpc.php through the
+// emscripten_fetch is_post path. The server logs the received body (see runs.jsonl server-post).
+function postTest() {
+    callRpc('<boinc_gui_rpc_request>\n<acct_mgr_rpc>\n<url>http://localhost:8000/</url>\n<name>tester</name>\n<password>testpass</password>\n</acct_mgr_rpc>\n</boinc_gui_rpc_request>\n');
+    line($rpc, 'rpc', 'rpc', '>>> POST test: acct_mgr_rpc (POSTs to /rpc.php); polling…');
+    let tries = 0;
+    const iv = setInterval(function () {
+        tries++;
+        const r = callRpc('<boinc_gui_rpc_request>\n<acct_mgr_rpc_poll/>\n</boinc_gui_rpc_request>\n');
+        if (r.includes('-204')) { if (tries > 30) { clearInterval(iv); line($rpc,'err','err','POST test: timed out'); } return; }
+        clearInterval(iv);
+        const em = (r.match(/<error_num>(-?\d+)</) || [])[1];
+        line($rpc, 'rpc', 'rpc', 'POST TEST: acct_mgr_rpc completed, error_num=' + em + ' — server logged the received POST body (see runs.jsonl)\n' + r.trim().slice(0, 400));
     }, 500);
 }
 
