@@ -619,31 +619,44 @@ int ACTIVE_TASK::setup_slot_dir(char *buf, unsigned int buf_len) {
 // that runs the downloaded app wasm module (main .js + companion .wasm, both read from the client
 // FS) and hand it the SharedArrayBuffer (Module.boincShm) that backs APP_CLIENT_SHM. The app talks
 // to the client purely over that SAB (Phase 3a). Returns a synthetic pid, or -1 on failure.
-EM_JS(int, wasm_spawn_app, (const char* js_path, const char* wasm_path), {
+EM_JS(int, wasm_spawn_app, (const char* js_path, const char* wasm_path, const char* slot_dir), {
     try {
+        var slot = UTF8ToString(slot_dir);
         var jsBytes = FS.readFile(UTF8ToString(js_path));
         var wp = UTF8ToString(wasm_path);
         var wasmUrl = wp ? URL.createObjectURL(new Blob([FS.readFile(wp)], {type:'application/wasm'})) : '';
         var jsUrl = URL.createObjectURL(new Blob([jsBytes], {type:'text/javascript'}));
-        // Worker glue: receive the SAB, point the app's .wasm at its Blob URL, then run it.
+        // Worker glue: receive the SAB, point the app's .wasm at its Blob URL, run it, and on exit
+        // send back every file in the app's working dir (output + boinc_finish_called).
         var glue =
             "var g_sab=null;\n" +
             "onmessage=function(e){ if(e.data&&e.data.boincShm){ g_sab=e.data.boincShm; if(Module.onShm)Module.onShm(); } };\n" +
+            "function collectFiles(){ var f={}; try{ FS.readdir('.').forEach(function(n){ if(n==='.'||n==='..')return;\n" +
+            "   try{ if(FS.isFile(FS.stat(n).mode)) f[n]=FS.readFile(n); }catch(_){} }); }catch(_){} return f; }\n" +
             "var Module={\n" +
             "  locateFile:function(p){ return p.slice(-5)==='.wasm' ? '" + wasmUrl + "' : p; },\n" +
             "  print:function(t){ postMessage({log:t}); },\n" +
             "  printErr:function(t){ postMessage({log:t}); },\n" +
-            "  onExit:function(c){ postMessage({exit:c}); },\n" +
+            "  onExit:function(c){ postMessage({files:collectFiles(), exit:c}); },\n" +
             "  preRun:[function(){ if(g_sab){Module.boincShm=new Uint8Array(g_sab);return;}\n" +
             "     addRunDependency('shm'); Module.onShm=function(){Module.boincShm=new Uint8Array(g_sab); removeRunDependency('shm');}; }],\n" +
             "};\n" +
             "importScripts('" + jsUrl + "');\n";
         var w = new Worker(URL.createObjectURL(new Blob([glue], {type:'text/javascript'})));
-        w.onmessage = function(e){ if(e.data.log) console.log('[boinc-app]', e.data.log); if('exit' in e.data) console.log('[boinc-app] exit', e.data.exit); };
-        w.onerror   = function(e){ console.error('[boinc-app] worker error:', e.message); };
+        var pid = 1000 + (Module.boincAppWorkerSeq = (Module.boincAppWorkerSeq||0) + 1);
+        w.onmessage = function(e){
+            if (e.data.log) console.log('[boinc-app pid ' + pid + ']', e.data.log);
+            if (e.data.files) {   // any files the app wrote to its MEMFS -> the client's slot dir
+                for (var n in e.data.files) {
+                    try { FS.writeFile(slot + '/' + n, e.data.files[n]); }
+                    catch (err) { console.error('[boinc-app] slot write failed:', n, err); }
+                }
+            }
+            if ('exit' in e.data) console.log('[boinc-app pid ' + pid + '] exit', e.data.exit);
+        };
+        w.onerror = function(e){ console.error('[boinc-app pid ' + pid + '] worker error:', e.message); };
         w.postMessage({ boincShm: Module.boincShm.buffer });
         Module.boincAppWorkers = Module.boincAppWorkers || {};
-        var pid = 1000 + (Module.boincAppWorkerSeq = (Module.boincAppWorkerSeq||0) + 1);
         Module.boincAppWorkers[pid] = w;
         return pid;
     } catch (e) {
@@ -651,7 +664,7 @@ EM_JS(int, wasm_spawn_app, (const char* js_path, const char* wasm_path), {
         return -1;
     }
 });
-// terminate a spawned app Worker (used when the client aborts/quits a task)
+// terminate a spawned app Worker (used on task completion/abort)
 EM_JS(void, wasm_kill_app, (int pid), {
     var w = Module.boincAppWorkers && Module.boincAppWorkers[pid];
     if (w) { w.terminate(); delete Module.boincAppWorkers[pid]; }
@@ -788,7 +801,7 @@ int ACTIVE_TASK::start() {
                 break;
             }
         }
-        int wpid = wasm_spawn_app(exec_path, wasm_path);
+        int wpid = wasm_spawn_app(exec_path, wasm_path, slot_dir);
         if (wpid < 0) {
             safe_strcpy(buf, "wasm_spawn_app() failed");
             retval = ERR_EXEC;

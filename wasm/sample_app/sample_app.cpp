@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <emscripten.h>
 #include "app_ipc.h"
 
 int main() {
@@ -34,6 +35,14 @@ int main() {
         }
     }
     printf("sample_app: finished\n");
+    // Report the result + signal completion over the SAB. This is robust: it does not rely on the
+    // Worker exiting / emscripten onExit. trickle_up carries the output (open_name "out");
+    // process_control_reply carries <finished/>, which the client reaps in check_app_exited().
+    char output[256];
+    snprintf(output, sizeof(output), "wasm result: crunched %d steps\n", STEPS);
     shm.shm->app_status.send_msg_overwrite("<fraction_done>1.000000</fraction_done>");
+    shm.shm->trickle_up.send_msg_overwrite(output);
+    shm.shm->process_control_reply.send_msg_overwrite("<finished/>");
+    printf("sample_app: signaled completion via SAB\n");
     return 0;
 }

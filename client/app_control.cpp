@@ -762,14 +762,50 @@ void ACTIVE_TASK_SET::process_control_poll() {
 
 // See if any processes have exited
 //
+#ifdef WASM
+// defined in app_start.cpp (EM_JS has C linkage): terminate an app Worker
+extern "C" void wasm_kill_app(int pid);
+#endif
+
 bool ACTIVE_TASK_SET::check_app_exited() {
     bool found = false;
 
 #ifdef WASM
-    // The browser sandbox has no child processes to reap (no fork/exec); calling
-    // waitpid() every poll only spams "unsupported syscall: __syscall_wait4".
-    // The Worker-based process model (Phase 3) will replace this path.
-    return false;
+    // Browser (Phase 3c): the app signals completion over the SAB rather than by exiting a process
+    // (Worker exit / onExit don't fire reliably). On process_control_reply == "<finished/>", bridge
+    // the app's output (trickle_up, open_name "out") + the finish file into the slot dir, terminate
+    // the Worker, and let handle_exited_app() check the finish file and complete/upload the result.
+    char msg[MSG_CHANNEL_SIZE], out[MSG_CHANNEL_SIZE], path[MAXPATHLEN];
+    for (ACTIVE_TASK* atp: active_tasks) {
+        if (!atp->app_client_shm.shm) continue;
+        if (atp->task_state() != PROCESS_EXECUTING) continue;
+        if (!atp->app_client_shm.shm->process_control_reply.get_msg(msg)) continue;
+        if (!strstr(msg, "<finished/>")) continue;
+
+        out[0] = 0;
+        atp->app_client_shm.shm->trickle_up.get_msg(out);
+        // Write the app's output to the physical output-file path(s). Natively the app writes
+        // through a slot->project symlink; wasm MEMFS has no such link, so write there directly.
+        if (atp->result) {
+            for (const FILE_REF& fref: atp->result->output_files) {
+                if (!fref.file_info) continue;
+                get_pathname(fref.file_info, path, sizeof(path));
+                FILE* of = boinc_fopen(path, "w");
+                if (of) { fputs(out, of); fclose(of); }
+            }
+        }
+        snprintf(path, sizeof(path), "%s/%s", atp->slot_dir, BOINC_FINISH_CALLED_FILE);
+        FILE* f = boinc_fopen(path, "w");
+        if (f) { fputs("0\n", f); fclose(f); }
+
+        wasm_kill_app(atp->pid);
+        msg_printf(atp->wup ? atp->wup->project : NULL, MSG_INFO,
+            "[task] app signaled completion; wrote output (%d bytes) + finish file", (int)strlen(out)
+        );
+        atp->handle_exited_app(0);
+        found = true;
+    }
+    return found;
 #endif
 
 #ifdef _WIN32

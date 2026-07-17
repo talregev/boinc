@@ -52,8 +52,6 @@ function onStdout(t) {
             const cpid = (hi.match(/<host_cpid>([^<]+)</) || [])[1];
             line($rpc, 'rpc', 'rpc', 'host_cpid = ' + cpid + '  (identical after a reload => persistence OK)');
         } catch (e) { line($rpc, 'err', 'err', 'get_host_info failed: ' + e); }
-        setInterval(driveRpc, 3000);
-        driveRpc();
         projectAttach();   // Phase 7: attach to the mock project and get a task
     }
 }
