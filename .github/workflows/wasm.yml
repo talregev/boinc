@@ -1,0 +1,79 @@
+# This file is part of BOINC.
+# https://boinc.berkeley.edu
+# Copyright (C) 2026 University of California
+#
+# BOINC is free software; you can redistribute it and/or modify it
+# under the terms of the GNU Lesser General Public License
+# as published by the Free Software Foundation,
+# either version 3 of the License, or (at your option) any later version.
+#
+# BOINC is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+# See the GNU Lesser General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public License
+# along with BOINC.  If not, see <http://www.gnu.org/licenses/>.
+
+name: WebAssembly
+on:
+  push:
+    branches: [ master, 'client_release/**' ]
+    tags: [ 'client_release/**' ]
+  pull_request:
+    branches: [ master ]
+  schedule:
+    - cron: '0 0 * * *'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.type }}-build
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        type: [client, client-debug]
+      fail-fast: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get -qq update
+          sudo apt-get install -y autoconf automake libtool pkg-config p7zip-full zip
+
+      - name: Automake
+        run: ./_autosetup
+
+      - name: Configure client as WebAssembly (release)
+        if: matrix.type == 'client'
+        run: wasm/ci_configure_client.sh
+
+      - name: Configure client as WebAssembly (debug)
+        if: matrix.type == 'client-debug'
+        run: wasm/ci_configure_client.sh debug
+
+      - name: Make
+        run: wasm/ci_make.sh
+
+      - name: Smoke test (boot the wasm client under node)
+        if: matrix.type == 'client'
+        run: |
+          NODE="$(find "$PWD/3rdParty/wasm/emsdk/node" -name node -type f | head -1)"
+          "$NODE" client/boinc_client.js --version
+          "$NODE" client/boinccmd.js --version
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: wasm_${{ matrix.type }}_${{ github.sha }}
+          path: |
+            client/boinc_client.js
+            client/boinc_client.wasm
+            client/boinccmd.js
+            client/boinccmd.wasm

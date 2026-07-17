@@ -258,6 +258,56 @@ cat C:\Users\<you>\wasm-spikes\runs.jsonl                               # <- res
 
 ---
 
+## 4b. Phase 1 — implemented (modern wasm client build)
+
+The BOINC **client compiles to WebAssembly and boots** on the current toolchain (Emscripten 6.0.3,
+WASM 3.0 / SIMD). Reproducible via the recreated `wasm/` scripts.
+
+### Toolchain + deps (fetched under `3rdParty/wasm/`, git-ignored)
+- **Emscripten 6.0.3** via `wasm/update_emsdk.sh` (emsdk).
+- **curl + openssl** built for `wasm32-emscripten` via `wasm/update_emsdk_vcpkg.sh` (vcpkg),
+  using the recreated manifest `3rdParty/vcpkg_ports/configs/client/wasm/vcpkg.json` and triplet
+  `3rdParty/vcpkg_ports/triplets/ci/wasm32-emscripten.cmake`.
+
+### Build
+```
+./_autosetup
+wasm/ci_configure_client.sh      # emconfigure ./configure --enable-wasm … (add: debug)
+wasm/ci_make.sh                  # emmake make
+```
+`--enable-wasm` sets `EXEEXT=.js` and `#define WASM 1`; `-msimd128` on; link flags
+`-sALLOW_MEMORY_GROWTH -sSTACK_SIZE=5MB -sINITIAL_MEMORY=64MB`.
+
+### Result — boots and reports version
+```
+$ node client/boinc_client.js --version
+8.3.0 i686-pc-linux-gnu
+$ node client/boinccmd.js --version
+boinccmd,  built from BOINC 8.3.0
+```
+Artifacts: `client/boinc_client.wasm` (~4.9 MB) + `.js`, `client/boinccmd.wasm` + `.js`.
+
+### Source changes required (minimal — 4 spots)
+- `configure.ac` — `--enable-wasm` option, `EXEEXT=.js`, `WASM` define, skip `sys/shm.h` on wasm.
+- `lib/wasm.cpp` + `lib/Makefile.am` — `ftok()` shim (absent in Emscripten libc).
+- `lib/procinfo.h` — declare `get_mem_info()` for `__EMSCRIPTEN__` (it is `__unix__` but not `__linux__`).
+- `client/hostinfo_unix.cpp` — real CPU branch for Emscripten: vendor `"WebAssembly"`, model from
+  `navigator.hardwareConcurrency` (replaces the old hard-coded `"WASM"`; `popen` is provided by
+  Emscripten libc so the old stub is no longer needed).
+
+Plus a fix in `wasm/ci_configure_client.sh`: `emconfigure` wipes `PKG_CONFIG_PATH`, so
+`EM_PKG_CONFIG_PATH` is used to expose the vcpkg `.pc` files (curl needs `openssl.pc`).
+
+### CI
+`.github/workflows/wasm.yml` — builds release + debug, boots both binaries under node as a smoke
+test, uploads the `.js`/`.wasm` artifacts.
+
+### Not yet (Phase 2+)
+The client boots and links but does not yet *operate* in a browser — needs OPFS-backed data dir,
+fetch-based networking (CORS), and the Worker+SharedArrayBuffer process model from Phase 0 Spike A.
+
+---
+
 ## 5. Sources
 
 - BOINC issue #3086 — <https://github.com/BOINC/boinc/issues/3086> (removal rationale:

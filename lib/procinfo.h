@@ -61,7 +61,9 @@ struct PROCINFO {
         scanned = false;
         children.clear();
     }
-#ifdef __linux__
+#if defined(__linux__) || defined(__EMSCRIPTEN__)
+    // Emscripten is __unix__ but not __linux__; it uses the linux /proc path
+    // (which returns no data in the browser sandbox, but compiles and degrades gracefully).
     void get_mem_info();
 #endif
 };

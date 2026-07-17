@@ -231,6 +231,20 @@ vda/vdad
 build/
 build-*/
 
+# WASM
+*.wasm
+a.out.js
+boinc.js
+boinc_client.js
+boinccmd.js
+switcher.js
+boinc.html
+boinc_client.html
+boinccmd.html
+switcher.html
+# WASM toolchain + deps (emsdk, vcpkg) fetched by wasm/*.sh — never commit these
+3rdParty/wasm/
+
 # snap
 parts/
 prime/
