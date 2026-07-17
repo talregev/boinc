@@ -1,0 +1,54 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Phase 3 — science app in a Worker over SAB IPC</title>
+<style>body{font:13px ui-monospace,monospace;max-width:820px;margin:2rem auto;padding:0 1rem}
+pre{background:#111;color:#8f8;padding:1rem;border-radius:8px;white-space:pre-wrap;max-height:70vh;overflow:auto}
+.bad{color:#f66}</style>
+<h1>Phase 3: sample science app ⇄ client over SharedArrayBuffer</h1>
+<p>This page plays the client: it hands the app Worker a SAB, reads <code>app_status</code>
+   (fraction_done), and sends <code>&lt;quit/&gt;</code> on the process-control channel at 50%.</p>
+<pre id="log">starting…</pre>
+<script>
+const $=document.getElementById('log'); $.textContent='';
+function rep(t,cls){ const d=document.createElement('div'); if(cls)d.className=cls; d.textContent=t; $.appendChild(d); $.scrollTop=$.scrollHeight;
+  try{ fetch('/report',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({tag:'app3',text:String(t).slice(0,300),when:new Date().toISOString()})});}catch(e){} }
+
+if (typeof SharedArrayBuffer === 'undefined' || !self.crossOriginIsolated) {
+  rep('SharedArrayBuffer unavailable — serve with COOP/COEP (serve.py)', 'bad');
+} else {
+  // SHARED_MEM layout: 8 channels x 1024 bytes. Indices: 0 process_control_request ... 5 app_status
+  const CH=1024, PCR=0*CH, APP_STATUS=5*CH;
+  const sab=new SharedArrayBuffer(8*CH), u8=new Uint8Array(sab);
+  const observed=[]; let quitSent=false, done=false;
+
+  function readChan(off){ if(Atomics.load(u8,off)===0) return null;
+    let s=''; for(let i=off+1;i<off+CH && u8[i]!==0;i++) s+=String.fromCharCode(u8[i]);
+    Atomics.store(u8,off,0); return s; }
+  function sendChan(off,msg){ for(let i=0;i<msg.length;i++)u8[off+1+i]=msg.charCodeAt(i); u8[off+1+msg.length]=0; Atomics.store(u8,off,1); }
+
+  const w=new Worker('app_worker.js');
+  w.onmessage=e=>{ if(e.data.log) rep('  [app] '+e.data.log); if('exit'in e.data) rep('  [app] worker exit '+e.data.exit); };
+  w.onerror=e=>rep('worker error: '+e.message,'bad');
+  w.postMessage({boincShm:sab});
+  rep('client: spawned app Worker, handed it the SAB');
+
+  const poll=setInterval(()=>{
+    const s=readChan(APP_STATUS);
+    if(s){ const m=s.match(/<fraction_done>([\d.]+)/);
+      if(m){ const f=parseFloat(m[1]); observed.push(f); rep('client <- app_status: fraction_done='+f.toFixed(2));
+        if(f>=0.5 && !quitSent){ quitSent=true; sendChan(PCR,'<quit/>'); rep('client -> process_control: <quit/>'); }
+      } else rep('client <- app_status: '+s);
+      if(s.includes('exited')){ finish(); }
+    }
+  },50);
+  setTimeout(()=>{ if(!done) finish(); }, 30000);
+
+  function finish(){ if(done)return; done=true; clearInterval(poll);
+    const mono=observed.every((v,i)=>i===0||v>=observed[i-1]);
+    const ok=observed.length>=3 && mono && quitSent;
+    rep('\nPHASE 3 '+(ok?'PASSED':'FAILED')+': app ran in a Worker, reported '+observed.length+
+        ' progress updates (peak '+Math.max.apply(null,observed).toFixed(2)+'), quit handshake='+quitSent, ok?'':'bad');
+  }
+}
+</script>
