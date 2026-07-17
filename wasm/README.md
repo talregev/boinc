@@ -396,11 +396,81 @@ input was: wasm input payload
 ```
 
 ### Still deferred
-- **GPU/WebGPU apps (Phase 5)** — Spike B proved WebGPU detect+compute bit-for-bit; wiring a WebGPU
-  app through this same Worker/SAB path is the next phase. `GPU detection failed` in the client log is
-  the native fork/exec probe, expected on wasm (left visible on purpose).
 - **External GUI RPC monitoring** — the in-page `boinc_handle_gui_rpc` bridge works; a native relay
   for out-of-browser monitoring is a separate item.
+
+---
+
+## 4e. Phase 6 — implemented (WebGPU science app crunches on the GPU) ✅
+
+A real BOINC **GPU** app runs the whole cycle in a browser tab: the same `libboinc_api` as a CPU app,
+but the crunch is a **WGSL compute shader** dispatched via **WebGPU** from the app's Web Worker.
+
+- `wasm/gpu_app/gpu_app.cpp` — `boinc_init` → `wasm_gpu_init` (requestAdapter/requestDevice, upload
+  input, build the compute pipeline) → 64 dispatches with `boinc_fraction_done()` between → read back
+  → `boinc_finish`. WebGPU's API is async, so the app is built `-sASYNCIFY` and awaits it from
+  synchronous C via `EM_ASYNC_JS`. `wasm/gpu_app/build_app.sh` builds it.
+- The kernel is Spike B's per-element xorshift32 (bit-exact in WGSL `u32` and JS), so a correct GPU
+  run folds to the **same checksum Spike B's CPU oracle produced** — an end-to-end correctness proof.
+
+### Proof (visible Chrome, real GPU — headless Chrome has no usable adapter)
+`navigator.gpu` works both on the client's main thread **and inside the app's Blob Worker** (verified
+with a standalone probe: adapter `amd/rdna-2`, checksum `0x27a723a9` in both contexts). The GPU app
+then ran through the pipeline:
+```
+Finished download of app.js (78206 bytes) / app.wasm (146861)   # the -sASYNCIFY GPU build
+[task] started app.js as a Web Worker (pid 1001)
+[task] app called boinc_finish(0); bridged output(s) + wrote finish file
+Finished upload of wu_1_0_out (99 bytes) / Reporting 1 completed tasks
+```
+Uploaded result — **bit-for-bit identical to Spike B's oracle** (`0x27a723a9`):
+```
+webgpu result: checksum=0x27a723a9
+kernel: xorshift32 N=1048576 K=256 REP=64
+adapter: amd/rdna-2
+```
+~17 billion kernel-iterations (64 × 2^20 × 256) ran on the GPU, correct to the bit, reported as a
+completed BOINC task. **"Detect GPU and crunch" — the crunch half is delivered.**
+
+### Still deferred
+- **External GUI RPC monitoring** — as above.
+
+---
+
+## 4f. Phase 5 — implemented (client detects the WebGPU adapter) ✅
+
+The wasm client detects the GPU and reports it. There is no fork/exec GPU probe in a browser, so the
+client asks `navigator.gpu` for the adapter on its main thread.
+
+- `client/main.cpp` — `wasm_webgpu_detect_start()` kicks off `navigator.gpu.requestAdapter()` (async;
+  the client isn't built `-sASYNCIFY`), and `wasm_webgpu_detect_poll()` polls it from the main loop.
+  When it resolves it logs `Detected WebGPU GPU: <vendor/arch/device>` and records the adapter in
+  `HOST_INFO::webgpu_name`.
+- `lib/hostinfo.{h,cpp}` — new `webgpu_name` field, parsed + written in the host-info XML, so it is
+  reported over GUI RPC (`get_host_info`) and to the scheduler.
+
+Proof (visible Chrome, real GPU):
+```
+[---] Detected WebGPU GPU: amd/rdna-2/?
+WebGPU adapter (get_host_info): amd/rdna-2/?      # queried live over the GUI RPC bridge
+```
+
+### In-browser GPU-vs-CPU benchmark (Phase 8 down payment, objection #3)
+`wasm/gpu_app/gpu_app.cpp` also runs the *same* kernel on the wasm CPU and compares — a self-contained
+correctness + performance artifact reported as the task's result:
+```
+correctness: GPU==CPU bit-for-bit = YES (cpu=0x27a723a9)
+benchmark: GPU 31839 M-iter/s vs CPU(wasm) 518 M-iter/s = 61.5x    # AMD RDNA-2, one Chrome tab
+```
+GPU and wasm CPU agree to the bit, and the GPU is ~60x the single-thread wasm CPU for this kernel.
+
+### Still deferred
+- **Coproc / scheduler targeting** — the client detects + *reports* the adapter, but making it a
+  formal `COPROC` (a new `PROC_TYPE_WEBGPU`) so the scheduler dispatches a GPU-typed app version
+  (plan_class) is a cross-repo change (client **and** server) and is left as the next step. Today the
+  WebGPU app runs as a normal app version that uses WebGPU internally. `GPU detection failed` in the
+  client log is the native fork/exec probe, expected on wasm.
+- **External GUI RPC monitoring** — as above.
 
 ---
 

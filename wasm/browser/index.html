@@ -40,7 +40,7 @@ let clientReady = false;
 function onStdout(t) {
     show($log, 'out', t);
     // Phase 7: forward only the interesting lines (avoid a fetch firehose that drops messages)
-    if (/project|sched|master|download|task|app|work|fetch|contact|error|fail|Started|Requesting|Reason/i.test(t))
+    if (/project|sched|master|download|task|app|work|fetch|contact|error|fail|Started|Requesting|Reason|WebGPU|GPU/i.test(t))
         post('clientlog', t);
     if (!clientReady && t.includes('Initialization completed')) {
         clientReady = true;
@@ -53,7 +53,24 @@ function onStdout(t) {
             line($rpc, 'rpc', 'rpc', 'host_cpid = ' + cpid + '  (identical after a reload => persistence OK)');
         } catch (e) { line($rpc, 'err', 'err', 'get_host_info failed: ' + e); }
         projectAttach();   // Phase 7: attach to the mock project and get a task
+        webgpuCheck();     // Phase 5: poll get_host_info for the detected WebGPU adapter
     }
+}
+
+// Phase 5: the client detects the WebGPU adapter asynchronously; poll get_host_info until
+// <webgpu_name> appears, proving the client "detects the GPU" and reports it over GUI RPC.
+function webgpuCheck() {
+    let tries = 0;
+    const iv = setInterval(function () {
+        tries++;
+        const hi = callRpc('<boinc_gui_rpc_request>\n<get_host_info/>\n</boinc_gui_rpc_request>\n');
+        const gpu = (hi.match(/<webgpu_name>([^<]+)</) || [])[1];
+        if (gpu) { clearInterval(iv);
+            line($rpc, 'rpc', 'rpc', 'WebGPU adapter (get_host_info): ' + gpu);
+            post('projstate', 'webgpu_name=' + gpu);
+        } else if (tries > 20) { clearInterval(iv);
+            line($rpc, 'rpc', 'rpc', 'WebGPU adapter: not reported in get_host_info'); }
+    }, 500);
 }
 
 // Phase 7: attach to the mock project (mock_project.py on :8100). The client fetches the master

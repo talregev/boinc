@@ -240,6 +240,7 @@ boinccmd.js
 switcher.js
 wasm/browser/fetch_test.js
 wasm/sample_app/app.js
+wasm/gpu_app/app.js
 boinc.html
 boinc_client.html
 boinccmd.html
