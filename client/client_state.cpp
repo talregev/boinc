@@ -171,7 +171,15 @@ CLIENT_STATE::CLIENT_STATE()
     must_schedule_cpus = true;
     must_check_work_fetch = true;
     retry_shmem_time = 0;
+#ifdef WASM
+    // The browser sandbox has no TCP/Unix listening sockets, so the GUI RPC server
+    // cannot bind (gstate.init() would fail with ERR_BIND). Disable it; a web UI will
+    // talk to the client through a browser-native channel (postMessage/WebSocket) later.
+    no_gui_rpc = true;
+    wasm_selftest = false;
+#else
     no_gui_rpc = false;
+#endif
     autologin_in_progress = false;
     autologin_fetching_project_list = false;
     gui_rpc_unix_domain = false;

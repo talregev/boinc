@@ -408,6 +408,11 @@ static int finalize() {
     return 0;
 }
 
+#ifdef WASM
+// browser GUI RPC string bridge, defined in gui_rpc_server_ops.cpp
+extern "C" char* boinc_handle_gui_rpc(const char*);
+#endif
+
 int boinc_main_loop() {
     int retval;
 
@@ -432,6 +437,23 @@ int boinc_main_loop() {
     }
 
     log_message_startup("Initialization completed");
+
+#ifdef WASM
+    if (gstate.wasm_selftest) {
+        // Prove the browser GUI RPC seam headless: feed a few requests through the
+        // same string bridge the web UI will use, print the replies, and exit.
+        const char* reqs[] = {
+            "<boinc_gui_rpc_request>\n<get_host_info/>\n</boinc_gui_rpc_request>\n",
+            "<boinc_gui_rpc_request>\n<get_cc_status/>\n</boinc_gui_rpc_request>\n"
+        };
+        for (unsigned i=0; i<sizeof(reqs)/sizeof(reqs[0]); i++) {
+            char* reply = boinc_handle_gui_rpc(reqs[i]);
+            printf("=== WASM GUI RPC selftest: request %u ===\n%s\n", i, reply ? reply : "(null)");
+            free(reply);
+        }
+        return 0;
+    }
+#endif
 
     // client main loop; poll interval is 1 sec
     while (1) {
