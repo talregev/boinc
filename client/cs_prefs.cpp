@@ -439,7 +439,11 @@ void CLIENT_STATE::check_suspend_network() {
         goto done;
     }
 
+#ifndef WASM
     // no network traffic if we're allowing unsigned apps
+    // (this guards native clients from fetching unsigned code from a project).
+    // On WASM the app runs in a Web Worker sandbox and the model is "the project ships a
+    // wasm app the browser downloads", so we allow unsigned-app downloads over the network.
     //
     if (cc_config.unsigned_apps_ok) {
         network_suspended = true;
@@ -447,6 +451,7 @@ void CLIENT_STATE::check_suspend_network() {
         network_suspend_reason = SUSPEND_REASON_USER_REQ;
         goto done;
     }
+#endif
 
     // was there a recent GUI RPC that needs network?
     //

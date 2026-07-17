@@ -21,7 +21,7 @@
 const $log = document.getElementById('log'), $rpc = document.getElementById('rpc');
 let seq = 0;
 function post(kind, text) {   // only forward the interesting kinds to the server
-    if (!['rpc','err','abort','ready','loaderror','exit'].includes(kind)) return;
+    if (!['rpc','err','abort','ready','loaderror','exit','clientlog','projstate'].includes(kind)) return;
     try { fetch('/report', { method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tag: 'client', seq: seq++, kind, text: String(text).slice(0, 4000),
                                when: new Date().toISOString() }) }); } catch (e) {}
@@ -39,7 +39,9 @@ window.addEventListener('unhandledrejection', e =>
 let clientReady = false;
 function onStdout(t) {
     show($log, 'out', t);
-    if (t.includes('Data directory')) post('rpc', t);   // surface the (persistent) data dir path
+    // Phase 7: forward only the interesting lines (avoid a fetch firehose that drops messages)
+    if (/project|sched|master|download|task|app|work|fetch|contact|error|fail|Started|Requesting|Reason/i.test(t))
+        post('clientlog', t);
     if (!clientReady && t.includes('Initialization completed')) {
         clientReady = true;
         line($rpc, 'ready', 'sys', '>>> client initialized; starting live GUI RPC <<<');
@@ -52,8 +54,43 @@ function onStdout(t) {
         } catch (e) { line($rpc, 'err', 'err', 'get_host_info failed: ' + e); }
         setInterval(driveRpc, 3000);
         driveRpc();
-        netTest();      // Phase 2d: real HTTP_OP round-trip via emscripten_fetch
+        projectAttach();   // Phase 7: attach to the mock project and get a task
     }
+}
+
+// Phase 7: attach to the mock project (mock_project.py on :8100). The client fetches the master
+// file, contacts the scheduler, downloads the (unsigned) wasm app + input, and schedules the task.
+function projectAttach() {
+    // the browser build starts with computation/network suspended; enable them
+    callRpc('<boinc_gui_rpc_request>\n<set_run_mode>\n<always/>\n</set_run_mode>\n</boinc_gui_rpc_request>\n');
+    callRpc('<boinc_gui_rpc_request>\n<set_network_mode>\n<always/>\n</set_network_mode>\n</boinc_gui_rpc_request>\n');
+    line($rpc, 'rpc', 'rpc', 'set run+network mode = always');
+    const url = 'http://127.0.0.1:8100/';
+    callRpc('<boinc_gui_rpc_request>\n<project_attach>\n<use_config_file>0</use_config_file>\n' +
+            '<project_url>' + url + '</project_url>\n<authenticator>wasm_test_auth</authenticator>\n' +
+            '<project_name>WASM Test Project</project_name>\n</project_attach>\n</boinc_gui_rpc_request>\n');
+    line($rpc, 'rpc', 'rpc', '>>> Phase 7: project_attach to ' + url + '; watching client log…');
+    let tries = 0;
+    const iv = setInterval(function () {
+        tries++;
+        const r = callRpc('<boinc_gui_rpc_request>\n<project_attach_poll/>\n</boinc_gui_rpc_request>\n');
+        const em = (r.match(/<error_num>(-?\d+)</) || [])[1];
+        if (em && em !== '-204') { clearInterval(iv); line($rpc, 'rpc', 'rpc', 'project_attach_poll: error_num=' + em + (em==='0'?' (attached)':'')); setTimeout(dumpProjectState, 6000); }
+        if (tries > 20) clearInterval(iv);
+    }, 500);
+}
+
+// diagnostic: what does the client think of the project after attach?
+function dumpProjectState() {
+    const st = callRpc('<boinc_gui_rpc_request>\n<get_state/>\n</boinc_gui_rpc_request>\n');
+    const proj = (st.match(/<project>[\s\S]*?<\/project>/) || [])[0] || '(no <project> in state)';
+    const keys = ['master_url','project_name','sched_rpc_pending','min_rpc_time','nrpc_failures',
+                  'master_url_fetch_pending','dont_request_more_work','last_rpc_time'];
+    let out = 'project state after attach:\n';
+    keys.forEach(k => { const m = proj.match(new RegExp('<'+k+'>([^<]*)<')); if (m) out += '  '+k+'='+m[1]+'\n'; });
+    if (proj.startsWith('(no')) out += '  '+proj;
+    line($rpc, 'rpc', 'rpc', out);
+    post('projstate', out);
 }
 
 // Phase 2d proof: make the running client do a real HTTP GET (get_project_config →

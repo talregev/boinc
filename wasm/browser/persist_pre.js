@@ -22,6 +22,14 @@ Module.preRun.push(function () {
         addRunDependency('boinc-idbfs-load');
         FS.syncfs(true, function (err) {
             if (err) console.warn('BOINC: IDBFS load error:', err);
+            // wasm-build default: accept unsigned project apps. The browser has no code-signing
+            // infrastructure, and apps are fetched from the (CORS-scoped) project over HTTPS.
+            try {
+                if (!FS.analyzePath('/boinc_data/cc_config.xml').exists) {
+                    FS.writeFile('/boinc_data/cc_config.xml',
+                        '<cc_config>\n<options>\n<unsigned_apps_ok>1</unsigned_apps_ok>\n</options>\n</cc_config>\n');
+                }
+            } catch (e) { console.warn('BOINC: cc_config write failed:', e); }
             removeRunDependency('boinc-idbfs-load');
         });
     } catch (e) {
