@@ -351,6 +351,59 @@ Transport proofs (all in Chrome, `wasm/browser/fetch_test.c` + the client harnes
 
 ---
 
+## 4d. Phase 3 — implemented (apps run in the browser, full BOINC cycle) ✅
+
+The client runs real science apps in the browser and completes the whole volunteer-computing
+loop in one Chrome tab: **attach → scheduler → download app → run in a Worker → report progress →
+finish → upload result → report the completed task.**
+
+### Process/app model (Option B — separate app modules, SAB IPC)
+There is no `fork`/`exec` in a browser, and real science apps are independent binaries that do **not**
+share the client's memory. So each app is a downloaded wasm module (`app.js` + `app.wasm`) run in its
+own **Web Worker**, and the client hands it a **`SharedArrayBuffer`** that backs `APP_CLIENT_SHM`
+(the 8-channel `MSG_CHANNEL` shared memory). App ↔ client IPC — progress, process control, completion
+— is Atomics over that SAB. Requires cross-origin isolation (COOP/COEP) for `SharedArrayBuffer`.
+
+- `client/app_start.cpp` — `ACTIVE_TASK::start()` on wasm sets up the SAB-backed shm and calls
+  `wasm_spawn_app()` (EM_JS): reads `app.js`/`app.wasm` from the client FS, Blob-URL-loads them into a
+  Worker, and **bridges the slot's input files** (`init_data.xml` + input files, copied real content —
+  a Worker has no project dir to resolve a `../../` soft link against) into the Worker's MEMFS.
+- `lib/app_ipc.cpp` — `MSG_CHANNEL` get/send/`boinc_wasm_shm_setup()` route to the SAB via Atomics.
+- `client/app_control.cpp` — `check_app_exited()` on wasm reaps apps that called `boinc_finish()`:
+  copies each bridged output file to its physical path, writes the finish file, and completes/uploads.
+
+### Real `libboinc_api` on wasm — arbitrary apps, not a hand-wired sample
+`api/boinc_api.cpp` was ported so a **standard** app (`boinc_init` / `boinc_resolve_filename` /
+`boinc_fraction_done` / `boinc_finish`) runs unmodified in the Worker:
+- `setup_shared_mem()` attaches to the SAB the client provided (no SysV/mmap in the browser);
+- there is **no background timer thread** (a Worker is single-threaded) — progress reporting and
+  process-control polling are driven synchronously from `boinc_fraction_done()`;
+- `boinc_finish()` bridges the app's output files back to the client and posts a completion record;
+- the slot lockfile is skipped (the client spawns exactly one Worker per slot).
+
+### Proof (Chrome, headless, real API app + mock project on `:8100`)
+```
+[WASM Test Project] Finished download of app.js (70071 bytes) / app.wasm (100102) / input.txt (19)
+[WASM Test Project] [task] started app.js as a Web Worker (pid 1001)
+[WASM Test Project] [task] app called boinc_finish(0); bridged output(s) + wrote finish file
+[WASM Test Project] Finished upload of wu_1_0_out (81 bytes)
+[WASM Test Project] Reporting 1 completed tasks
+```
+The uploaded result proves the **input round-trip** (app read the 19-byte input and echoed it):
+```
+wasm result: crunched 50 steps over 19 input bytes
+input was: wasm input payload
+```
+
+### Still deferred
+- **GPU/WebGPU apps (Phase 5)** — Spike B proved WebGPU detect+compute bit-for-bit; wiring a WebGPU
+  app through this same Worker/SAB path is the next phase. `GPU detection failed` in the client log is
+  the native fork/exec probe, expected on wasm (left visible on purpose).
+- **External GUI RPC monitoring** — the in-page `boinc_handle_gui_rpc` bridge works; a native relay
+  for out-of-browser monitoring is a separate item.
+
+---
+
 ## 5. Sources
 
 - BOINC issue #3086 — <https://github.com/BOINC/boinc/issues/3086> (removal rationale:

@@ -143,6 +143,13 @@ class H(BaseHTTPRequestHandler):
             print('[mock] scheduler_request %d bytes' % n)
             self._send(200, scheduler_reply(body).encode()); return
         if self.path.rstrip('/').endswith('/upload'):
+            # Save the uploaded result payload for verification. BOINC's file_upload_handler
+            # protocol frames the bytes in a <data> block; extract and log it.
+            m = re.search(r'<data>\n?(.*?)</data>', body, re.S)
+            payload = m.group(1) if m else body
+            with open(os.path.join(HERE, 'uploaded_output.txt'), 'w') as fh:
+                fh.write(payload)
+            print('[mock] upload received (%d body bytes); saved payload:\n%s' % (n, payload))
             self._send(200, b'<data_server_reply><status>0</status></data_server_reply>'); return
         self._send(404, b'not found', 'text/plain')
 

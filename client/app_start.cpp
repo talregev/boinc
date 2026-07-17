@@ -429,6 +429,18 @@ int ACTIVE_TASK::setup_file(
         return 0;
     }
 
+#ifdef WASM
+    // The app runs in a Web Worker with its own MEMFS and no project dir, so a "../../" soft link
+    // can't be resolved there. Copy input file content into the slot instead; wasm_spawn_app()
+    // bridges the slot files into the Worker, where boinc_resolve_filename() returns them as-is.
+    // (Output files need no link: the app writes them by open_name and boinc_finish() bridges back.)
+    if (input) {
+        retval = boinc_copy(file_path, link_path);
+        if (retval) return retval;
+    }
+    return 0;
+#endif
+
 #ifdef _WIN32
     retval = make_soft_link(project, link_path, rel_file_path);
     if (retval) return retval;
@@ -622,40 +634,51 @@ int ACTIVE_TASK::setup_slot_dir(char *buf, unsigned int buf_len) {
 EM_JS(int, wasm_spawn_app, (const char* js_path, const char* wasm_path, const char* slot_dir), {
     try {
         var slot = UTF8ToString(slot_dir);
-        var jsBytes = FS.readFile(UTF8ToString(js_path));
+        var jp = UTF8ToString(js_path);
         var wp = UTF8ToString(wasm_path);
+        var jsBytes = FS.readFile(jp);
         var wasmUrl = wp ? URL.createObjectURL(new Blob([FS.readFile(wp)], {type:'application/wasm'})) : '';
         var jsUrl = URL.createObjectURL(new Blob([jsBytes], {type:'text/javascript'}));
-        // Worker glue: receive the SAB, point the app's .wasm at its Blob URL, run it, and on exit
-        // send back every file in the app's working dir (output + boinc_finish_called).
+        // Slot input bridge: copy the files the client staged in the slot dir (init_data.xml +
+        // input files, real content — see setup_file()) into the Worker's MEMFS so a real
+        // libboinc_api app's boinc_init()/boinc_resolve_filename() find them. Skip the app's own
+        // .js/.wasm (already loaded via the Blob URLs above).
+        var appJs = jp.split('/').pop(), appWasm = wp ? wp.split('/').pop() : '';
+        var slotFiles = {};
+        try { FS.readdir(slot).forEach(function(n){
+            if (n==='.'||n==='..'||n===appJs||n===appWasm) return;
+            try { if (FS.isFile(FS.stat(slot+'/'+n).mode)) slotFiles[n] = FS.readFile(slot+'/'+n); } catch(_){}
+        }); } catch(_){}
+        // Worker glue: receive the SAB + slot files, write the slot files into MEMFS, point the
+        // app's .wasm at its Blob URL, and run it. On boinc_finish() the app (api/boinc_api.cpp)
+        // posts {boincFinish, files}; we stash the output files + status for check_app_exited().
         var glue =
-            "var g_sab=null;\n" +
-            "onmessage=function(e){ if(e.data&&e.data.boincShm){ g_sab=e.data.boincShm; if(Module.onShm)Module.onShm(); } };\n" +
-            "function collectFiles(){ var f={}; try{ FS.readdir('.').forEach(function(n){ if(n==='.'||n==='..')return;\n" +
-            "   try{ if(FS.isFile(FS.stat(n).mode)) f[n]=FS.readFile(n); }catch(_){} }); }catch(_){} return f; }\n" +
+            "var g_sab=null, g_slot={};\n" +
+            "onmessage=function(e){ if(e.data&&e.data.boincShm){ g_sab=e.data.boincShm; g_slot=e.data.slotFiles||{}; if(Module.onShm)Module.onShm(); } };\n" +
             "var Module={\n" +
             "  locateFile:function(p){ return p.slice(-5)==='.wasm' ? '" + wasmUrl + "' : p; },\n" +
             "  print:function(t){ postMessage({log:t}); },\n" +
             "  printErr:function(t){ postMessage({log:t}); },\n" +
-            "  onExit:function(c){ postMessage({files:collectFiles(), exit:c}); },\n" +
-            "  preRun:[function(){ if(g_sab){Module.boincShm=new Uint8Array(g_sab);return;}\n" +
-            "     addRunDependency('shm'); Module.onShm=function(){Module.boincShm=new Uint8Array(g_sab); removeRunDependency('shm');}; }],\n" +
+            "  preRun:[function(){ function go(){ Module.boincShm=new Uint8Array(g_sab);\n" +
+            "       for(var n in g_slot){ try{ FS.writeFile(n, g_slot[n]); }catch(_){} } }\n" +
+            "     if(g_sab){go();return;} addRunDependency('shm'); Module.onShm=function(){go(); removeRunDependency('shm');}; }],\n" +
             "};\n" +
             "importScripts('" + jsUrl + "');\n";
         var w = new Worker(URL.createObjectURL(new Blob([glue], {type:'text/javascript'})));
         var pid = 1000 + (Module.boincAppWorkerSeq = (Module.boincAppWorkerSeq||0) + 1);
         w.onmessage = function(e){
             if (e.data.log) console.log('[boinc-app pid ' + pid + ']', e.data.log);
-            if (e.data.files) {   // any files the app wrote to its MEMFS -> the client's slot dir
-                for (var n in e.data.files) {
+            if ('boincFinish' in e.data) {   // app called boinc_finish(): stash outputs + status
+                for (var n in e.data.files) {   // the app's output files -> the client's slot dir
                     try { FS.writeFile(slot + '/' + n, e.data.files[n]); }
                     catch (err) { console.error('[boinc-app] slot write failed:', n, err); }
                 }
+                Module.boincFinished = Module.boincFinished || [];
+                Module.boincFinished.push({ pid: pid, status: e.data.boincFinish|0 });
             }
-            if ('exit' in e.data) console.log('[boinc-app pid ' + pid + '] exit', e.data.exit);
         };
         w.onerror = function(e){ console.error('[boinc-app pid ' + pid + '] worker error:', e.message); };
-        w.postMessage({ boincShm: Module.boincShm.buffer });
+        w.postMessage({ boincShm: Module.boincShm.buffer, slotFiles: slotFiles });
         Module.boincAppWorkers = Module.boincAppWorkers || {};
         Module.boincAppWorkers[pid] = w;
         return pid;
@@ -668,6 +691,13 @@ EM_JS(int, wasm_spawn_app, (const char* js_path, const char* wasm_path, const ch
 EM_JS(void, wasm_kill_app, (int pid), {
     var w = Module.boincAppWorkers && Module.boincAppWorkers[pid];
     if (w) { w.terminate(); delete Module.boincAppWorkers[pid]; }
+});
+// reap a completed app: returns its pid (0 if none) and writes its boinc_finish() status.
+EM_JS(int, wasm_poll_finished, (int* status_out), {
+    if (!Module.boincFinished || !Module.boincFinished.length) return 0;
+    var e = Module.boincFinished.shift();
+    if (status_out) HEAP32[status_out>>2] = e.status|0;
+    return e.pid;
 });
 #endif  // WASM
 

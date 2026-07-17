@@ -763,46 +763,50 @@ void ACTIVE_TASK_SET::process_control_poll() {
 // See if any processes have exited
 //
 #ifdef WASM
-// defined in app_start.cpp (EM_JS has C linkage): terminate an app Worker
+// defined in app_start.cpp (EM_JS has C linkage): terminate an app Worker, and reap one that
+// called boinc_finish() (returns its pid, 0 if none; writes the boinc_finish() status).
 extern "C" void wasm_kill_app(int pid);
+extern "C" int wasm_poll_finished(int* status_out);
 #endif
 
 bool ACTIVE_TASK_SET::check_app_exited() {
     bool found = false;
 
 #ifdef WASM
-    // Browser (Phase 3c): the app signals completion over the SAB rather than by exiting a process
-    // (Worker exit / onExit don't fire reliably). On process_control_reply == "<finished/>", bridge
-    // the app's output (trickle_up, open_name "out") + the finish file into the slot dir, terminate
-    // the Worker, and let handle_exited_app() check the finish file and complete/upload the result.
-    char msg[MSG_CHANNEL_SIZE], out[MSG_CHANNEL_SIZE], path[MAXPATHLEN];
-    for (ACTIVE_TASK* atp: active_tasks) {
-        if (!atp->app_client_shm.shm) continue;
-        if (atp->task_state() != PROCESS_EXECUTING) continue;
-        if (!atp->app_client_shm.shm->process_control_reply.get_msg(msg)) continue;
-        if (!strstr(msg, "<finished/>")) continue;
-
-        out[0] = 0;
-        atp->app_client_shm.shm->trickle_up.get_msg(out);
-        // Write the app's output to the physical output-file path(s). Natively the app writes
-        // through a slot->project symlink; wasm MEMFS has no such link, so write there directly.
+    // Browser: an app can't exit a process the client can wait4() on. Instead a real libboinc_api
+    // app calls boinc_finish(), which bridges its output files into the slot dir (by open_name) and
+    // posts a completion record. Reap those here: copy each output file to its physical path, write
+    // the finish file, terminate the Worker, and let handle_exited_app() complete/upload the result.
+    int status = 0, wpid;
+    char slotpath[MAXPATHLEN], phys[MAXPATHLEN], path[MAXPATHLEN];
+    while ((wpid = wasm_poll_finished(&status)) > 0) {
+        ACTIVE_TASK* atp = lookup_pid(wpid);
+        if (!atp) continue;
         if (atp->result) {
             for (const FILE_REF& fref: atp->result->output_files) {
                 if (!fref.file_info) continue;
-                get_pathname(fref.file_info, path, sizeof(path));
-                FILE* of = boinc_fopen(path, "w");
-                if (of) { fputs(out, of); fclose(of); }
+                // The app resolved its output by open_name (no slot->project link in the Worker),
+                // so it landed in the slot under that name; copy it to the physical output path.
+                const char* on = strlen(fref.open_name) ? fref.open_name : fref.file_info->name;
+                snprintf(slotpath, sizeof(slotpath), "%s/%s", atp->slot_dir, on);
+                get_pathname(fref.file_info, phys, sizeof(phys));
+                int retval = boinc_copy(slotpath, phys);
+                if (retval) {
+                    msg_printf(atp->wup ? atp->wup->project : NULL, MSG_INTERNAL_ERROR,
+                        "[task] output file %s missing in slot: %s", on, boincerror(retval)
+                    );
+                }
             }
         }
         snprintf(path, sizeof(path), "%s/%s", atp->slot_dir, BOINC_FINISH_CALLED_FILE);
         FILE* f = boinc_fopen(path, "w");
-        if (f) { fputs("0\n", f); fclose(f); }
+        if (f) { fprintf(f, "%d\n", status); fclose(f); }
 
-        wasm_kill_app(atp->pid);
+        wasm_kill_app(wpid);
         msg_printf(atp->wup ? atp->wup->project : NULL, MSG_INFO,
-            "[task] app signaled completion; wrote output (%d bytes) + finish file", (int)strlen(out)
+            "[task] app called boinc_finish(%d); bridged output(s) + wrote finish file", status
         );
-        atp->handle_exited_app(0);
+        atp->handle_exited_app(status ? (status << 8) : 0);
         found = true;
     }
     return found;

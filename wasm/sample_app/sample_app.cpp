@@ -1,48 +1,51 @@
-// Phase 3 minimal wasm science app. It uses the real SAB-backed APP_CLIENT_SHM
-// (lib/app_ipc.cpp) to report fraction_done to the client and to honour a <quit/>
-// process-control message — proving app<->client IPC across two separate wasm modules.
-// The Worker glue (app_worker.js) sets Module.boincShm from the SharedArrayBuffer the
-// client hands over; boinc_wasm_shm_setup() then attaches this app to it.
+// A real BOINC science app for the wasm client, using the standard libboinc_api:
+// boinc_init / boinc_resolve_filename / boinc_fopen / boinc_fraction_done / boinc_finish.
+// This proves *arbitrary* project apps run in the browser — nothing here is wasm-specific or
+// hand-wired to the SharedArrayBuffer. The API's wasm port (api/boinc_api.cpp) attaches to the
+// SAB the client handed the Worker, drives progress synchronously from boinc_fraction_done(),
+// and on boinc_finish() bridges the output file(s) back to the client.
 #include <cstdio>
-#include <cstdlib>
 #include <cstring>
-#include <emscripten.h>
-#include "app_ipc.h"
+#include "boinc_api.h"
+#include "filesys.h"
 
 int main() {
-    APP_CLIENT_SHM shm;
-    shm.shm = (SHARED_MEM*)malloc(sizeof(SHARED_MEM));
-    boinc_wasm_shm_setup(shm.shm);     // Module.boincShm already set by the Worker glue
-    printf("sample_app: attached to shared memory; crunching\n");
+    int retval = boinc_init();
+    if (retval) {
+        fprintf(stderr, "sample_app: boinc_init failed: %d\n", retval);
+        return retval;
+    }
 
-    char cmd[MSG_CHANNEL_SIZE], buf[256];
-    const int STEPS = 100;
+    // Resolve and read the input file (logical name "in"; the client copied it into the slot).
+    char in_path[512], out_path[512];
+    boinc_resolve_filename("in", in_path, sizeof(in_path));
+    boinc_resolve_filename("out", out_path, sizeof(out_path));
+
+    char input[4096];
+    size_t n = 0;
+    FILE* f = boinc_fopen(in_path, "r");
+    if (f) { n = fread(input, 1, sizeof(input) - 1, f); fclose(f); }
+    input[n] = 0;
+    fprintf(stderr, "sample_app: read %zu input bytes from '%s'\n", n, in_path);
+
+    // Crunch: report fraction_done across the run. Each call pushes progress to the client
+    // (over the SAB) and polls process control (suspend/resume/quit).
+    const int STEPS = 50;
     for (int step = 0; step <= STEPS; step++) {
-        // do a chunk of "science" (busy work so a step takes ~tens of ms)
         volatile double acc = 0;
         for (int i = 0; i < 8000000; i++) acc += i * 0.5;
-
-        // report progress (drop silently if the client hasn't read the last one yet)
-        double frac = (double)step / STEPS;
-        snprintf(buf, sizeof(buf), "<fraction_done>%f</fraction_done>", frac);
-        shm.shm->app_status.send_msg(buf);
-
-        // honour process-control (quit)
-        if (shm.shm->process_control_request.get_msg(cmd) && strstr(cmd, "<quit/>")) {
-            printf("sample_app: received quit at fraction_done=%f\n", frac);
-            shm.shm->app_status.send_msg_overwrite("<state>exited</state>");
-            return 0;
-        }
+        boinc_fraction_done((double)step / STEPS);
     }
-    printf("sample_app: finished\n");
-    // Report the result + signal completion over the SAB. This is robust: it does not rely on the
-    // Worker exiting / emscripten onExit. trickle_up carries the output (open_name "out");
-    // process_control_reply carries <finished/>, which the client reaps in check_app_exited().
-    char output[256];
-    snprintf(output, sizeof(output), "wasm result: crunched %d steps\n", STEPS);
-    shm.shm->app_status.send_msg_overwrite("<fraction_done>1.000000</fraction_done>");
-    shm.shm->trickle_up.send_msg_overwrite(output);
-    shm.shm->process_control_reply.send_msg_overwrite("<finished/>");
-    printf("sample_app: signaled completion via SAB\n");
+
+    // Write the output file (logical name "out"); boinc_finish() bridges it to the client.
+    FILE* of = boinc_fopen(out_path, "w");
+    if (of) {
+        fprintf(of, "wasm result: crunched %d steps over %zu input bytes\ninput was: %s",
+            STEPS, n, input);
+        fclose(of);
+    }
+    fprintf(stderr, "sample_app: wrote output to '%s'; calling boinc_finish\n", out_path);
+
+    boinc_finish(0);   // does not return
     return 0;
 }
