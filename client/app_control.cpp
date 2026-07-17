@@ -765,6 +765,13 @@ void ACTIVE_TASK_SET::process_control_poll() {
 bool ACTIVE_TASK_SET::check_app_exited() {
     bool found = false;
 
+#ifdef WASM
+    // The browser sandbox has no child processes to reap (no fork/exec); calling
+    // waitpid() every poll only spams "unsupported syscall: __syscall_wait4".
+    // The Worker-based process model (Phase 3) will replace this path.
+    return false;
+#endif
+
 #ifdef _WIN32
     unsigned long exit_code;
 

@@ -2188,16 +2188,27 @@ int GUI_RPC_CONN::handle_rpc() {
 extern "C" EMSCRIPTEN_KEEPALIVE
 char* boinc_handle_gui_rpc(const char* req) {
     static GUI_RPC_CONN conn(-1);   // one persistent local connection for the session
-    conn.is_local = true;           // local connection: no authenticator required
+
+    // Auth: the browser client and its web UI share one origin/sandbox, so this bridge is
+    // inherently a *local* connection and needs no authenticator (mirrors is_local on the
+    // native TCP path). NOTE: if an external transport (e.g. a WebSocket relay) is ever
+    // added, it MUST NOT reuse this path unauthenticated — enforce the gui_rpc password there.
+    conn.is_local = true;
     conn.auth_needed = false;
+
     conn.request_nbytes = 0;
     safe_strcpy(conn.request_msg, req ? req : "");
-    char* term = strchr(conn.request_msg, 3);   // drop \003 framing if the caller sent it
+    char* term = strchr(conn.request_msg, 3);   // tolerate a caller that included \003 framing
     if (term) *term = 0;
-    conn.do_rpc(false);
+
+    // http_request=true omits the native \003 stream delimiter: postMessage/ccall replies are
+    // already message-framed, so the reply is a clean, standalone XML string.
+    conn.do_rpc(true);
+
     char* p = 0;
     int n = 0;
-    conn.mout.get_buf(p, n);        // malloc'd reply (XML + trailing \003); JS frees it
+    conn.mout.get_buf(p, n);        // malloc'd reply; OWNERSHIP TRANSFERS TO THE CALLER — the JS
+                                    // glue must _free(ptr) after reading it (see wasm/browser/).
     return p ? p : strdup("");
 }
 #endif

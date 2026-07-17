@@ -409,8 +409,54 @@ static int finalize() {
 }
 
 #ifdef WASM
+#include <emscripten.h>
 // browser GUI RPC string bridge, defined in gui_rpc_server_ops.cpp
 extern "C" char* boinc_handle_gui_rpc(const char*);
+#endif
+
+// One iteration of the client poll loop. Returns false when the client should exit.
+// poll_dt is the do_io_or_sleep interval: POLL_INTERVAL natively; 0 in the browser, where
+// emscripten_set_main_loop controls the cadence and a blocking sleep isn't allowed.
+static bool boinc_main_loop_body(double poll_dt) {
+    if (!gstate.poll_slow_events()) {
+        gstate.do_io_or_sleep(poll_dt);
+    }
+    if (gstate.time_to_exit()) {
+        msg_printf(NULL, MSG_INFO, "Time to exit");
+        return false;
+    }
+    if (gstate.requested_exit) {
+        if (cc_config.abort_jobs_on_exit) {
+            if (!gstate.in_abort_sequence) {
+                msg_printf(NULL, MSG_INFO,
+                    "Exit requested; starting abort sequence"
+                );
+                gstate.start_abort_sequence();
+            }
+        } else {
+            msg_printf(NULL, MSG_INFO, "Exiting");
+            return false;
+        }
+    }
+    if (gstate.in_abort_sequence) {
+        if (gstate.abort_sequence_done()) {
+            msg_printf(NULL, MSG_INFO, "Abort sequence done; exiting");
+            return false;
+        }
+    }
+    gstate.check_overdue();
+    return true;
+}
+
+#ifdef WASM
+static void wasm_main_loop_iter() {
+    // Runs on the browser event loop. The web UI's GUI RPC calls land *between*
+    // iterations, so client state is never touched reentrantly.
+    if (!boinc_main_loop_body(0.0)) {
+        emscripten_cancel_main_loop();
+        finalize();
+    }
+}
 #endif
 
 int boinc_main_loop() {
@@ -456,38 +502,15 @@ int boinc_main_loop() {
 #endif
 
     // client main loop; poll interval is 1 sec
-    while (1) {
-        if (!gstate.poll_slow_events()) {
-            gstate.do_io_or_sleep(POLL_INTERVAL);
-        }
-
-        if (gstate.time_to_exit()) {
-            msg_printf(NULL, MSG_INFO, "Time to exit");
-            break;
-        }
-        if (gstate.requested_exit) {
-            if (cc_config.abort_jobs_on_exit) {
-                if (!gstate.in_abort_sequence) {
-                    msg_printf(NULL, MSG_INFO,
-                        "Exit requested; starting abort sequence"
-                    );
-                    gstate.start_abort_sequence();
-                }
-            } else {
-                msg_printf(NULL, MSG_INFO, "Exiting");
-                break;
-            }
-        }
-        if (gstate.in_abort_sequence) {
-            if (gstate.abort_sequence_done()) {
-                msg_printf(NULL, MSG_INFO, "Abort sequence done; exiting");
-                break;
-            }
-        }
-        gstate.check_overdue();
-    }
-
+#ifdef WASM
+    // Browser: drive the poll loop cooperatively through the event loop so the tab stays
+    // responsive and the web UI's GUI RPC calls run between iterations (see wasm/README.md).
+    emscripten_set_main_loop(wasm_main_loop_iter, 4, 1);   // 4 Hz; simulate_infinite_loop=1
+    return 0;   // not reached: emscripten unwinds the stack and keeps calling the iter
+#else
+    while (boinc_main_loop_body(POLL_INTERVAL)) {}
     return finalize();
+#endif
 }
 
 int main(int argc, char** argv) {

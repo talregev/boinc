@@ -3,58 +3,78 @@
 <title>BOINC client — Chrome runtime harness (Phase 2)</title>
 <style>
   body { font: 13px/1.5 ui-monospace, monospace; max-width: 900px; margin: 1.5rem auto; padding: 0 1rem; }
-  h1 { font: 600 1.2rem system-ui; }
-  #log { background: #111; color: #ccc; padding: .8rem 1rem; border-radius: 8px; white-space: pre-wrap;
-         max-height: 70vh; overflow-y: auto; }
-  .err { color: #f66; } .out { color: #9c9; } .sys { color: #89f; } .muted { color: #888; }
-  @media (prefers-color-scheme: light) { #log { background:#f4f4f4; color:#222; } }
+  h1 { font: 600 1.2rem system-ui; } h2 { font: 600 .95rem system-ui; margin: 1rem 0 .3rem; }
+  .box { background: #111; color: #ccc; padding: .7rem 1rem; border-radius: 8px; white-space: pre-wrap;
+         overflow-y: auto; }
+  #log { max-height: 40vh; } #rpc { max-height: 34vh; }
+  .err { color: #f66; } .out { color: #9c9; } .sys { color: #89f; } .rpc { color: #fc6; } .muted { color: #888; }
+  @media (prefers-color-scheme: light) { .box { background:#f4f4f4; color:#222; } }
 </style>
 <h1>BOINC client — Chrome runtime harness</h1>
-<p class="muted">Loads the wasm client in the browser and streams stdout/stderr/exceptions to the
-  server (<code>/report</code> → <code>runs.jsonl</code>). Pass args via <code>?args=--version</code>
-  (space- or comma-separated); default runs the client with no args.</p>
-<div id="log">loading boinc_client.js …</div>
+<p class="muted">Loads the wasm client, runs it on the browser event loop (cooperative main loop),
+  and once initialized, drives GUI RPC live via <code>boinc_handle_gui_rpc</code> (no socket).
+  RPC replies + errors are streamed to the server (<code>/report</code> → <code>runs.jsonl</code>).</p>
+<h2>client log</h2><div id="log" class="box">loading boinc_client.js …</div>
+<h2>live GUI RPC (get_cc_status every 3s)</h2><div id="rpc" class="box">waiting for init…</div>
 
 <script>
-const $log = document.getElementById('log');
-const params = new URLSearchParams(location.search);
-const argStr = params.get('args');
-const args = argStr ? argStr.split(/[ ,]+/).filter(Boolean) : [];
-
+const $log = document.getElementById('log'), $rpc = document.getElementById('rpc');
 let seq = 0;
-function post(kind, text) {
-    const rec = { spike: 'client-smoke', seq: seq++, kind, text: String(text).slice(0, 2000),
-                  when: new Date().toISOString(), args };
+function post(kind, text) {   // only forward the interesting kinds to the server
+    if (!['rpc','err','abort','ready','loaderror','exit'].includes(kind)) return;
     try { fetch('/report', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-                             body: JSON.stringify(rec) }); } catch (e) {}
+        body: JSON.stringify({ tag: 'client', seq: seq++, kind, text: String(text).slice(0, 4000),
+                               when: new Date().toISOString() }) }); } catch (e) {}
 }
-function show(cls, text) {
-    const line = document.createElement('div');
-    line.className = cls; line.textContent = text;
-    $log.appendChild(line); $log.scrollTop = $log.scrollHeight;
-}
-function line(kind, cls, text) { show(cls, text); post(kind, text); }
+function show(el, cls, text) { const d = document.createElement('div'); d.className = cls;
+    d.textContent = text; el.appendChild(d); el.scrollTop = el.scrollHeight; }
+function line(el, kind, cls, text) { show(el, cls, text); post(kind, text); }
 
 window.addEventListener('error', e =>
-    line('window.onerror', 'err', `window.onerror: ${e.message} @ ${e.filename}:${e.lineno}:${e.colno}` +
-        (e.error && e.error.stack ? '\n' + e.error.stack : '')));
+    line($log, 'err', 'err', `window.onerror: ${e.message} @ ${e.filename}:${e.lineno}` +
+        (e.error && e.error.stack ? '\n'+e.error.stack : '')));
 window.addEventListener('unhandledrejection', e =>
-    line('unhandledrejection', 'err', 'unhandledrejection: ' + (e.reason && e.reason.stack || e.reason)));
+    line($log, 'err', 'err', 'unhandledrejection: ' + (e.reason && e.reason.stack || e.reason)));
 
-line('start', 'sys', 'harness start; args = [' + args.join(' ') + ']  crossOriginIsolated=' + self.crossOriginIsolated);
+let clientReady = false;
+function onStdout(t) {
+    show($log, 'out', t);
+    if (!clientReady && t.includes('Initialization completed')) {
+        clientReady = true;
+        line($rpc, 'ready', 'sys', '>>> client initialized; starting live GUI RPC <<<');
+        setInterval(driveRpc, 3000);
+        driveRpc();
+    }
+}
+
+// call the socketless GUI RPC bridge; own the returned buffer (malloc'd in C) and free it (#3)
+function callRpc(req) {
+    const ptr = Module.ccall('boinc_handle_gui_rpc', 'number', ['string'], [req]);
+    const reply = Module.UTF8ToString(ptr);
+    Module._free(ptr);
+    return reply;
+}
+function driveRpc() {
+    try {
+        const reply = callRpc('<boinc_gui_rpc_request>\n<get_cc_status/>\n</boinc_gui_rpc_request>\n');
+        const net = (reply.match(/<network_status>(\d+)</) || [])[1];
+        line($rpc, 'rpc', 'rpc', `[${new Date().toLocaleTimeString()}] get_cc_status ok, network_status=${net}\n` + reply.trim());
+    } catch (e) {
+        line($rpc, 'err', 'err', 'RPC call failed: ' + (e && e.stack || e));
+    }
+}
 
 var Module = {
-    arguments: args,
-    print:    t => line('stdout', 'out', t),
-    printErr: t => line('stderr', 'err', t),
-    onAbort:  w => line('abort', 'err', 'onAbort: ' + w),
-    onExit:   c => line('exit', 'sys', 'runtime exit, code=' + c),
-    locateFile: (p) => p,      // .wasm sits next to this page
+    arguments: [],
+    print:    onStdout,
+    printErr: t => show($log, 'err', t),   // stderr is noisy (wait4/poll warnings); page only
+    onAbort:  w => line($log, 'abort', 'err', 'onAbort: ' + w),
+    onExit:   c => line($log, 'exit', 'sys', 'runtime exit, code=' + c),
+    locateFile: (p) => p,
 };
-
-// load the emscripten module; boinc_client.js auto-runs main() using Module.arguments
+line($log, 'ready', 'sys', 'harness start; crossOriginIsolated=' + self.crossOriginIsolated);
 const s = document.createElement('script');
 s.src = 'boinc_client.js';
-s.onerror = () => line('loaderror', 'err', 'failed to load boinc_client.js');
+s.onerror = () => line($log, 'loaderror', 'err', 'failed to load boinc_client.js');
 document.body.appendChild(s);
 </script>

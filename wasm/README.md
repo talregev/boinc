@@ -302,9 +302,34 @@ Plus a fix in `wasm/ci_configure_client.sh`: `emconfigure` wipes `PKG_CONFIG_PAT
 `.github/workflows/wasm.yml` — builds release + debug, boots both binaries under node as a smoke
 test, uploads the `.js`/`.wasm` artifacts.
 
-### Not yet (Phase 2+)
-The client boots and links but does not yet *operate* in a browser — needs OPFS-backed data dir,
-fetch-based networking (CORS), and the Worker+SharedArrayBuffer process model from Phase 0 Spike A.
+---
+
+## 4c. Phase 2 — in progress (runs & is controllable in Chrome)
+
+The client now **boots, runs its main loop, and is driven live in Chrome** — not just compiled.
+
+### Done
+- **Runs in Chrome.** `wasm/browser/index.html` loads `boinc_client.js`; the client reaches its main
+  loop and runs continuously.
+- **Cooperative main loop.** `client/main.cpp`: the `while(1)` poll loop is refactored into
+  `boinc_main_loop_body()`, driven natively by a `while` and, on WASM, by
+  `emscripten_set_main_loop(...,4,1)` — so the tab stays responsive and JS runs between iterations.
+- **GUI RPC without a socket.** Browsers can't `listen()`, so the TCP GUI RPC server is disabled on
+  WASM (`no_gui_rpc=true`) and replaced by a string bridge: `GUI_RPC_CONN::do_rpc()` (the
+  transport-independent core of `handle_rpc()`) is exposed as `boinc_handle_gui_rpc(request)→reply`.
+  The web UI calls it via `ccall` (postMessage-ready). Wire protocol identical to native.
+  **Proven live**: repeated `get_cc_status`/`get_host_info` from the page return real replies while
+  the client runs. Also headless via `--wasm_selftest`.
+- **Quieter loop.** `check_app_exited()` skips `waitpid()` on WASM (no child processes yet), removing
+  per-poll `__syscall_wait4` spam.
+- **Harness reports to server** (`serve.py /report → runs.jsonl`) for evidence-driven debugging.
+
+### Remaining (still Phase 2)
+- **Persistent data dir** — currently MEMFS (lost on reload); needs OPFS (WASMFS OPFS backend).
+- **Project networking** — the client links vcpkg libcurl, but its sockets can't reach project
+  servers from a browser; needs curl's transport routed through **`fetch`** (and the CORS reality).
+  This is the largest remaining piece.
+- The Worker + SharedArrayBuffer process model (to actually run science apps) is **Phase 3**.
 
 ---
 
