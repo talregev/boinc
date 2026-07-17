@@ -39,9 +39,17 @@ window.addEventListener('unhandledrejection', e =>
 let clientReady = false;
 function onStdout(t) {
     show($log, 'out', t);
+    if (t.includes('Data directory')) post('rpc', t);   // surface the (persistent) data dir path
     if (!clientReady && t.includes('Initialization completed')) {
         clientReady = true;
         line($rpc, 'ready', 'sys', '>>> client initialized; starting live GUI RPC <<<');
+        // persistence proof: host_cpid is stored in client_state.xml, so it must be
+        // identical across reloads once the IDBFS-backed data dir persists.
+        try {
+            const hi = callRpc('<boinc_gui_rpc_request>\n<get_host_info/>\n</boinc_gui_rpc_request>\n');
+            const cpid = (hi.match(/<host_cpid>([^<]+)</) || [])[1];
+            line($rpc, 'rpc', 'rpc', 'host_cpid = ' + cpid + '  (identical after a reload => persistence OK)');
+        } catch (e) { line($rpc, 'err', 'err', 'get_host_info failed: ' + e); }
         setInterval(driveRpc, 3000);
         driveRpc();
     }
