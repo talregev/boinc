@@ -2185,9 +2185,23 @@ int GUI_RPC_CONN::handle_rpc() {
 // replaces the TCP GUI RPC transport while keeping the wire protocol byte-identical to
 // native (boinccmd/boincmgr). The returned buffer is malloc'd; the JS glue frees it.
 //
+// The bridge connection is a standalone GUI_RPC_CONN (not in the managed gui_rpcs set),
+// so the main loop must poll its async ops (get_project_config, account lookup, etc., which
+// run on conn.gui_http) explicitly — see boinc_gui_rpc_poll(), called from the wasm main loop.
+static GUI_RPC_CONN* wasm_bridge_conn = NULL;
+static GUI_RPC_CONN& wasm_get_bridge_conn() {
+    if (!wasm_bridge_conn) wasm_bridge_conn = new GUI_RPC_CONN(-1);  // lazy: avoid static-init order
+    return *wasm_bridge_conn;
+}
+
+// Pump the bridge connection's async HTTP ops. Called every iteration from the wasm main loop.
+extern "C" void boinc_gui_rpc_poll() {
+    if (wasm_bridge_conn) wasm_bridge_conn->gui_http.poll();
+}
+
 extern "C" EMSCRIPTEN_KEEPALIVE
 char* boinc_handle_gui_rpc(const char* req) {
-    static GUI_RPC_CONN conn(-1);   // one persistent local connection for the session
+    GUI_RPC_CONN& conn = wasm_get_bridge_conn();   // one persistent local connection for the session
 
     // Auth: the browser client and its web UI share one origin/sandbox, so this bridge is
     // inherently a *local* connection and needs no authenticator (mirrors is_local on the

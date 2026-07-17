@@ -52,7 +52,29 @@ function onStdout(t) {
         } catch (e) { line($rpc, 'err', 'err', 'get_host_info failed: ' + e); }
         setInterval(driveRpc, 3000);
         driveRpc();
+        netTest();      // Phase 2d: real HTTP_OP round-trip via emscripten_fetch
     }
+}
+
+// Phase 2d proof: make the running client do a real HTTP GET (get_project_config →
+// GET http://localhost:8000/get_project_config.php) through the emscripten_fetch backend.
+function netTest() {
+    callRpc('<boinc_gui_rpc_request>\n<get_project_config>\n<url>http://localhost:8000/</url>\n</get_project_config>\n</boinc_gui_rpc_request>\n');
+    line($rpc, 'rpc', 'rpc', '>>> net test: requested get_project_config; polling…');
+    let tries = 0;
+    const iv = setInterval(function () {
+        tries++;
+        const r = callRpc('<boinc_gui_rpc_request>\n<get_project_config_poll/>\n</boinc_gui_rpc_request>\n');
+        if (r.includes('-204')) { if (tries > 30) { clearInterval(iv); line($rpc,'err','err','net test: timed out (still in progress)'); } return; }
+        clearInterval(iv);
+        if (r.includes('WASM Test Project')) {
+            const name = (r.match(/<name>([^<]*)</) || [])[1];
+            line($rpc, 'rpc', 'rpc', 'NET TEST PASSED: HTTP_OP fetched project_config via emscripten_fetch, name="' + name + '"\n' + r.trim().slice(0, 500));
+        } else {
+            const em = (r.match(/<error_num>(-?\d+)</) || [])[1];
+            line($rpc, 'err', 'err', 'net test: error_num=' + em + '\n' + r.trim().slice(0, 500));
+        }
+    }, 500);
 }
 
 // call the socketless GUI RPC bridge; own the returned buffer (malloc'd in C) and free it (#3)

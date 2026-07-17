@@ -107,6 +107,14 @@ public:
     CURLcode CurlResult;
         // CMC -- send up curl result code
 
+#ifdef WASM
+    // Phase 2d: browser HTTP transport via the Emscripten Fetch API (libcurl's sockets
+    // can't reach servers from a browser). These replace curlEasy on the wasm build.
+    void* wasmFetch;             // emscripten_fetch_t* in flight (cast in the .cpp)
+    char* wasmReqBody;           // POST body, kept alive until the async fetch completes
+    volatile bool wasmFetchDone; // set true by the fetch callback when the transfer finishes
+#endif
+
     bool want_download;     // at most one should be true
     bool want_upload;
     long connect_error;
@@ -169,7 +177,11 @@ public:
     void setup_proxy_session(bool no_proxy);
     bool no_proxy_for_url(const char* url);
     bool is_active() {
+#ifdef WASM
+        return wasmFetch!=NULL;
+#else
         return curlEasy!=NULL;
+#endif
     }
 
 private:
@@ -178,6 +190,12 @@ private:
     int libcurl_exec(const char* url, const char* in, const char* out,
         double offset, double size, bool is_post
     );
+#ifdef WASM
+    // wasm equivalent of libcurl_exec: issue the request via emscripten_fetch
+    int wasm_fetch_exec(const char* url, const char* in, const char* out,
+        double offset, bool is_post
+    );
+#endif
 };
 
 // represents a set of HTTP requests in progress

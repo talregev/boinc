@@ -324,11 +324,22 @@ The client now **boots, runs its main loop, and is driven live in Chrome** — n
   per-poll `__syscall_wait4` spam.
 - **Harness reports to server** (`serve.py /report → runs.jsonl`) for evidence-driven debugging.
 
-### Remaining (still Phase 2)
-- **Persistent data dir** — currently MEMFS (lost on reload); needs OPFS (WASMFS OPFS backend).
-- **Project networking** — the client links vcpkg libcurl, but its sockets can't reach project
-  servers from a browser; needs curl's transport routed through **`fetch`** (and the CORS reality).
-  This is the largest remaining piece.
+### Done (cont.)
+- **Persistent data dir (2c).** IDBFS-backed `/boinc_data` via `wasm/browser/persist_pre.js`
+  (`--pre-js` + `-lidbfs.js`): load on startup, save every 5s + on `pagehide`. Proven — `host_cpid`
+  is identical across reloads. (OPFS swap once the client runs in a Worker, Phase 3.)
+- **Project networking (2d).** libcurl's sockets can't reach servers from a browser, so on WASM
+  `HTTP_OP::libcurl_exec` and `HTTP_OP_SET::got_select` are replaced by an **Emscripten Fetch**
+  backend (`wasm_fetch_exec`, `-sFETCH`) — real browser HTTP, same `http_op_state` machine, so
+  `scheduler_op`/`file_xfer` are unchanged. The bridge connection's `gui_http` is pumped from the
+  wasm main loop. **Proven in Chrome**: a live `get_project_config` GUI RPC drove a real `HTTP_OP`
+  GET through `emscripten_fetch` and returned the parsed `<project_config>`.
+
+### Remaining
+- **POST/scheduler round-trip** — the POST path (`wasm_fetch_exec` with `is_post`) is implemented but
+  only the GET round-trip is proven; a mock scheduler is needed to prove `project_attach` end-to-end.
+- **Cross-origin CORS** — proven same-origin; a real project must send `Access-Control-Allow-Origin`
+  (browser-side concern, no transport change).
 - The Worker + SharedArrayBuffer process model (to actually run science apps) is **Phase 3**.
 
 ---

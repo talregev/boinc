@@ -412,6 +412,8 @@ static int finalize() {
 #include <emscripten.h>
 // browser GUI RPC string bridge, defined in gui_rpc_server_ops.cpp
 extern "C" char* boinc_handle_gui_rpc(const char*);
+// pump the bridge connection's async HTTP ops (it isn't in the managed gui_rpcs set)
+extern "C" void boinc_gui_rpc_poll(void);
 #endif
 
 // One iteration of the client poll loop. Returns false when the client should exit.
@@ -452,6 +454,7 @@ static bool boinc_main_loop_body(double poll_dt) {
 static void wasm_main_loop_iter() {
     // Runs on the browser event loop. The web UI's GUI RPC calls land *between*
     // iterations, so client state is never touched reentrantly.
+    boinc_gui_rpc_poll();   // deliver replies for the bridge's async HTTP ops
     if (!boinc_main_loop_body(0.0)) {
         emscripten_cancel_main_loop();
         finalize();

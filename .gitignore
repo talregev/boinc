@@ -238,6 +238,7 @@ boinc.js
 boinc_client.js
 boinccmd.js
 switcher.js
+wasm/browser/fetch_test.js
 boinc.html
 boinc_client.html
 boinccmd.html

@@ -23,7 +23,9 @@ export CPPFLAGS="-msimd128"
 #   (boinc_handle_gui_rpc, kept via EMSCRIPTEN_KEEPALIVE) and free its malloc'd reply.
 # - IDBFS + persist_pre.js: back the data dir with IndexedDB so client_state.xml,
 #   projects and tasks survive page reloads (OPFS swap comes when the client is in a Worker).
-export LDFLAGS="-sALLOW_MEMORY_GROWTH=1 -sSTACK_SIZE=5MB -sINITIAL_MEMORY=64MB \
+# - FETCH: HTTP transport for HTTP_OP via emscripten_fetch (libcurl sockets can't reach
+#   servers from a browser); see client/http_curl.cpp wasm_fetch_exec.
+export LDFLAGS="-sALLOW_MEMORY_GROWTH=1 -sSTACK_SIZE=5MB -sINITIAL_MEMORY=64MB -sFETCH \
 -sEXPORTED_RUNTIME_METHODS=ccall,cwrap,UTF8ToString -sEXPORTED_FUNCTIONS=_main,_malloc,_free \
 -lidbfs.js --pre-js $PWD/wasm/browser/persist_pre.js"
 debug_flags=""
