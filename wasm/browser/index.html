@@ -75,9 +75,21 @@ function projectAttach() {
         tries++;
         const r = callRpc('<boinc_gui_rpc_request>\n<project_attach_poll/>\n</boinc_gui_rpc_request>\n');
         const em = (r.match(/<error_num>(-?\d+)</) || [])[1];
-        if (em && em !== '-204') { clearInterval(iv); line($rpc, 'rpc', 'rpc', 'project_attach_poll: error_num=' + em + (em==='0'?' (attached)':'')); setTimeout(dumpProjectState, 6000); }
+        if (em && em !== '-204') { clearInterval(iv); line($rpc, 'rpc', 'rpc', 'project_attach_poll: error_num=' + em + (em==='0'?' (attached)':'')); setTimeout(dumpProjectState, 6000); taskPoll(); }
         if (tries > 20) clearInterval(iv);
     }, 500);
+}
+
+// Phase 3b/d: watch the task's fraction_done (reported by the app Worker over the SAB).
+function taskPoll() {
+    let last = -1;
+    setInterval(function () {
+        const r = callRpc('<boinc_gui_rpc_request>\n<get_results/>\n</boinc_gui_rpc_request>\n');
+        const m = r.match(/<active_task>[\s\S]*?<fraction_done>([\d.]+)<[\s\S]*?<\/active_task>/);
+        const state = (r.match(/<active_task_state>(\d+)</) || [])[1];
+        if (m) { const f = parseFloat(m[1]); if (f !== last) { last = f;
+            line($rpc, 'rpc', 'rpc', 'TASK wu_1_0: fraction_done=' + f.toFixed(3) + ' (active_task_state=' + state + ')'); } }
+    }, 2000);
 }
 
 // diagnostic: what does the client think of the project after attach?

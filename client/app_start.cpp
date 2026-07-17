@@ -613,6 +613,51 @@ int ACTIVE_TASK::setup_slot_dir(char *buf, unsigned int buf_len) {
 // Current dir is top-level BOINC dir
 //
 // postcondition:
+#ifdef WASM
+#include <emscripten.h>
+// Phase 3b: launch a science app in the browser. There is no fork/exec, so spawn a Web Worker
+// that runs the downloaded app wasm module (main .js + companion .wasm, both read from the client
+// FS) and hand it the SharedArrayBuffer (Module.boincShm) that backs APP_CLIENT_SHM. The app talks
+// to the client purely over that SAB (Phase 3a). Returns a synthetic pid, or -1 on failure.
+EM_JS(int, wasm_spawn_app, (const char* js_path, const char* wasm_path), {
+    try {
+        var jsBytes = FS.readFile(UTF8ToString(js_path));
+        var wp = UTF8ToString(wasm_path);
+        var wasmUrl = wp ? URL.createObjectURL(new Blob([FS.readFile(wp)], {type:'application/wasm'})) : '';
+        var jsUrl = URL.createObjectURL(new Blob([jsBytes], {type:'text/javascript'}));
+        // Worker glue: receive the SAB, point the app's .wasm at its Blob URL, then run it.
+        var glue =
+            "var g_sab=null;\n" +
+            "onmessage=function(e){ if(e.data&&e.data.boincShm){ g_sab=e.data.boincShm; if(Module.onShm)Module.onShm(); } };\n" +
+            "var Module={\n" +
+            "  locateFile:function(p){ return p.slice(-5)==='.wasm' ? '" + wasmUrl + "' : p; },\n" +
+            "  print:function(t){ postMessage({log:t}); },\n" +
+            "  printErr:function(t){ postMessage({log:t}); },\n" +
+            "  onExit:function(c){ postMessage({exit:c}); },\n" +
+            "  preRun:[function(){ if(g_sab){Module.boincShm=new Uint8Array(g_sab);return;}\n" +
+            "     addRunDependency('shm'); Module.onShm=function(){Module.boincShm=new Uint8Array(g_sab); removeRunDependency('shm');}; }],\n" +
+            "};\n" +
+            "importScripts('" + jsUrl + "');\n";
+        var w = new Worker(URL.createObjectURL(new Blob([glue], {type:'text/javascript'})));
+        w.onmessage = function(e){ if(e.data.log) console.log('[boinc-app]', e.data.log); if('exit' in e.data) console.log('[boinc-app] exit', e.data.exit); };
+        w.onerror   = function(e){ console.error('[boinc-app] worker error:', e.message); };
+        w.postMessage({ boincShm: Module.boincShm.buffer });
+        Module.boincAppWorkers = Module.boincAppWorkers || {};
+        var pid = 1000 + (Module.boincAppWorkerSeq = (Module.boincAppWorkerSeq||0) + 1);
+        Module.boincAppWorkers[pid] = w;
+        return pid;
+    } catch (e) {
+        console.error('wasm_spawn_app failed:', e);
+        return -1;
+    }
+});
+// terminate a spawned app Worker (used when the client aborts/quits a task)
+EM_JS(void, wasm_kill_app, (int pid), {
+    var w = Module.boincAppWorkers && Module.boincAppWorkers[pid];
+    if (w) { w.terminate(); delete Module.boincAppWorkers[pid]; }
+});
+#endif  // WASM
+
 // If any error occurs
 //   ACTIVE_TASK::task_state is PROCESS_COULDNT_START
 //   report_result_error() is called
@@ -725,6 +770,38 @@ int ACTIVE_TASK::start() {
         msg_printf(0, MSG_INFO, "about to start a job; exiting");
         exit(0);
     }
+
+#ifdef WASM
+    // Browser: no fork/exec. Back APP_CLIENT_SHM with a SharedArrayBuffer and spawn the app
+    // as a Web Worker (main .js + companion .wasm), handing it that SAB.
+    if (!app_client_shm.shm) {
+        app_client_shm.shm = (SHARED_MEM*)malloc(sizeof(SHARED_MEM));
+        boinc_wasm_shm_setup(app_client_shm.shm);
+    }
+    app_client_shm.reset_msgs();
+    {
+        char wasm_path[MAXPATHLEN];
+        wasm_path[0] = 0;
+        for (const FILE_REF &fref: app_version->app_files) {
+            if (fref.file_info && strstr(fref.file_info->name, ".wasm")) {
+                get_pathname(fref.file_info, wasm_path, sizeof(wasm_path));
+                break;
+            }
+        }
+        int wpid = wasm_spawn_app(exec_path, wasm_path);
+        if (wpid < 0) {
+            safe_strcpy(buf, "wasm_spawn_app() failed");
+            retval = ERR_EXEC;
+            goto error;
+        }
+        pid = wpid;
+        set_task_state(PROCESS_EXECUTING, "start");
+        msg_printf(wup->project, MSG_INFO,
+            "[task] started %s as a Web Worker (pid %d)", exec_name, pid
+        );
+        return 0;
+    }
+#endif
 
 #ifdef _WIN32
     PROCESS_INFORMATION process_info;

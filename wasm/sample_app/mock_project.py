@@ -70,7 +70,7 @@ def scheduler_reply(req_body):
 <name>wu_1_0_out</name>
 <generated_locally/>
 <max_nbytes>1000000</max_nbytes>
-<url>{BASE}upload</url>
+<upload_url>{BASE}upload</upload_url>
 <upload_when_present/>
 </file_info>
 <app_version>
@@ -111,8 +111,6 @@ def scheduler_reply(req_body):
 <file_ref>
 <file_name>wu_1_0_out</file_name>
 <open_name>out</open_name>
-<upload_when_present/>
-<url>{BASE}upload</url>
 </file_ref>
 </result>
 </scheduler_reply>
