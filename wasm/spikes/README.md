@@ -26,9 +26,14 @@ python3 serve.py                 # then open http://localhost:8000/spikeA-ipc/
 - `kernel.js` — reference xorshift32 kernel (shared by Node and browser).
 - `compute.wgsl` — the WebGPU compute shader, kept bit-for-bit identical to `kernel.js`.
 - `oracle.js` — headless: cross-checks the kernel against an independent BigInt impl, benchmarks the
-  CPU baseline, and prints the checksum the GPU must reproduce.
+  single-thread **and all-cores** (`cpu-worker.js`) CPU baselines, and prints the target checksum.
+- `cpu-worker.js` / `cpu-worker-browser.js` — one CPU worker (Node / browser) computing a slice for
+  the all-cores baseline.
 - `index.html` — detects the GPU adapter (name/limits) and runs the shader, comparing its checksum
-  and timing to the CPU.
+  and timing to the single-thread and all-cores CPU baselines.
+
+Both pages POST their result JSON to the server's `/report` endpoint (`serve.py` appends to
+`runs.jsonl`), so a run's numbers can be read back without copy-paste.
 
 Run headless (verifies the kernel + prints the target checksum):
 ```

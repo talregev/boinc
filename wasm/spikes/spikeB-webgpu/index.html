@@ -110,24 +110,73 @@ async function main() {
     rdBuf.unmap();
     const gpuSum = SpikeKernel.checksum(gpuOut);
 
-    // CPU reference in-page for a same-machine speedup number
+    // single-thread CPU reference (same machine)
     const c0 = performance.now();
     const cpuOut = new Uint32Array(N);
     for (let i = 0; i < N; i++) cpuOut[i] = SpikeKernel.step(input[i], K);
     const cpuMs = performance.now() - c0;
     const cpuSum = SpikeKernel.checksum(cpuOut);
 
-    const match = gpuSum === cpuSum;
+    // all-cores CPU baseline (fair GPU comparison); null if not cross-origin isolated
+    const mt = await cpuParallel(input, K);
+
     const hx = v => '0x' + (v >>> 0).toString(16).padStart(8, '0');
-    $out.innerHTML =
+    const rate = ms => (N * K / 1e6 / (ms / 1000)).toFixed(0);
+    const okGpu = gpuSum === cpuSum;
+    const okMt = mt ? mt.cksum === cpuSum : true;
+    let out =
         `elements N   : ${N}\niterations K : ${K}  (${(N * K / 1e6).toFixed(0)}M kernel iterations)\n` +
-        `GPU time     : ${gpuMs.toFixed(2)} ms  (${(N * K / 1e6 / (gpuMs / 1000)).toFixed(0)} M iters/s)\n` +
-        `CPU time     : ${cpuMs.toFixed(2)} ms  (${(N * K / 1e6 / (cpuMs / 1000)).toFixed(0)} M iters/s, single-thread JS)\n` +
-        `speedup      : ${(cpuMs / gpuMs).toFixed(1)}x\n` +
-        `GPU checksum : ${hx(gpuSum)}\nCPU checksum : ${hx(cpuSum)}\n` +
-        (match ? '<span class="ok">SPIKE B: PASSED — GPU output matches CPU bit-for-bit</span>'
-               : '<span class="bad">SPIKE B: FAILED — checksums differ (kernel diverged)</span>');
-    console.log('[Spike B]', { gpuMs, cpuMs, gpuSum: hx(gpuSum), cpuSum: hx(cpuSum), match });
+        `GPU          : ${gpuMs.toFixed(2)} ms  (${rate(gpuMs)} M iters/s)\n` +
+        `CPU  1 thread: ${cpuMs.toFixed(2)} ms  (${rate(cpuMs)} M iters/s)\n`;
+    out += mt
+        ? `CPU ${String(mt.P).padStart(2)} threads: ${mt.ms.toFixed(2)} ms  (${rate(mt.ms)} M iters/s)  <- fair baseline\n` +
+          `speedup      : ${(cpuMs / gpuMs).toFixed(1)}x vs 1 thread, ${(mt.ms / gpuMs).toFixed(1)}x vs ${mt.P} threads\n`
+        : `CPU threads  : (unavailable — page not cross-origin isolated)\n` +
+          `speedup      : ${(cpuMs / gpuMs).toFixed(1)}x vs 1 thread\n`;
+    out += `GPU checksum : ${hx(gpuSum)}\nCPU checksum : ${hx(cpuSum)}` + (mt ? `\nCPU-mt cksum : ${hx(mt.cksum)}` : '') + `\n`;
+    out += (okGpu && okMt)
+        ? '<span class="ok">SPIKE B: PASSED — GPU output matches CPU bit-for-bit</span>'
+        : '<span class="bad">SPIKE B: FAILED — ' + (!okGpu ? 'GPU != CPU' : 'CPU multi-thread != CPU') + '</span>';
+    $out.innerHTML = out;
+    const report = {
+        spike: 'B', when: new Date().toISOString(), pass: okGpu && okMt,
+        adapter: { vendor: info.vendor || null, architecture: info.architecture || null, device: info.device || info.description || null },
+        N, K, gpuMs, cpuMs, cpuThreads: mt ? mt.P : 0, cpuMtMs: mt ? mt.ms : null,
+        speedupVs1: cpuMs / gpuMs, speedupVsMt: mt ? mt.ms / gpuMs : null,
+        gpuSum: hx(gpuSum), cpuSum: hx(cpuSum), cpuMtSum: mt ? hx(mt.cksum) : null,
+    };
+    console.log('[Spike B]', report);
+    try { await fetch('/report', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(report) }); } catch (e) {}
+}
+
+// all-cores CPU baseline via Web Workers; returns {ms,cksum,P} or null if SharedArrayBuffer is off
+async function cpuParallel(input, K) {
+    if (typeof SharedArrayBuffer === 'undefined' || !self.crossOriginIsolated) return null;
+    const P = navigator.hardwareConcurrency || 4;
+    const sab = new SharedArrayBuffer(input.length * 4);
+    new Uint32Array(sab).set(input);
+    const chunk = Math.ceil(input.length / P);
+    const workers = [], ready = [];
+    for (let p = 0; p < P; p++) {
+        const w = new Worker('cpu-worker-browser.js');
+        workers.push(w);
+        ready.push(new Promise(res => {
+            const h = (e) => { if (e.data === 'ready') { w.removeEventListener('message', h); res(); } };
+            w.addEventListener('message', h);
+        }));
+    }
+    await Promise.all(ready);            // wait until all workers loaded, so timing excludes spawn cost
+    const results = workers.map(w => new Promise(res => { w.onmessage = (e) => res(e.data >>> 0); }));
+    const t0 = performance.now();
+    for (let p = 0; p < P; p++) {
+        const start = p * chunk, end = Math.min(input.length, start + chunk);
+        workers[p].postMessage({ sab, start, end, K });
+    }
+    const partials = await Promise.all(results);
+    const ms = performance.now() - t0;
+    workers.forEach(w => w.terminate());
+    const cksum = partials.reduce((a, b) => (a ^ b) >>> 0, 0) >>> 0;
+    return { ms, cksum, P };
 }
 
 document.getElementById('run').addEventListener('click', () => main().catch(e => {

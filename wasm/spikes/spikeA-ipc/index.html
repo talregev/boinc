@@ -52,7 +52,15 @@ if (typeof SharedArrayBuffer === 'undefined') {
     }, 20);
     const guard = setTimeout(() => fail('timed out'), 30000);
     function stop() { clearInterval(hb); clearInterval(poll); clearTimeout(guard); }
-    function fail(why) { if (done) return; done = true; stop(); log('\nSPIKE A: FAILED — ' + why); }
+    function report(pass, note) {
+        try {
+            fetch('/report', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ spike: 'A', when: new Date().toISOString(), pass,
+                    updates: observed.length, peak: observed.length ? Math.max.apply(null, observed) : 0,
+                    checkpointAck: gotCheckpointAck, quitAck: gotQuitAck, note: note || '' }) });
+        } catch (e) {}
+    }
+    function fail(why) { if (done) return; done = true; stop(); log('\nSPIKE A: FAILED — ' + why); report(false, why); }
     function finish() {
         if (done) return; done = true; stop();
         let r; while ((r = shm.receive('CONTROL_REPLY')) !== null) { if (r.includes('quit')) gotQuitAck = true; if (r.includes('checkpoint')) gotCheckpointAck = true; }
@@ -60,6 +68,7 @@ if (typeof SharedArrayBuffer === 'undefined') {
         const ok = observed.length >= 5 && mono && Math.max.apply(null, observed) >= 0.999 && gotCheckpointAck && gotQuitAck;
         log('\n' + (ok ? 'SPIKE A: PASSED — SharedArrayBuffer carries the APP_CLIENT_SHM protocol in-browser'
                        : 'SPIKE A: FAILED — updates=' + observed.length + ' mono=' + mono + ' ckpt=' + gotCheckpointAck + ' quit=' + gotQuitAck));
+        report(ok, ok ? '' : ('updates=' + observed.length + ' mono=' + mono));
     }
 }
 </script>

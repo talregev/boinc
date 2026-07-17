@@ -189,10 +189,11 @@ program is feasible. Cheap insurance before touching the BOINC tree.
 
 ## 4a. Phase 0 — implemented (see `spikes/`)
 
-Both de-risk spikes are built. Everything that can run without a GPU/browser runs green **headless
-in Node** in this repo; the GPU dispatch is code-complete and awaits a WebGPU browser.
+Both de-risk spikes are built and run green **headless in Node** and **in a real browser** on an
+AMD RDNA-2 GPU. The browser pages POST their results to the dev server (`serve.py` → `runs.jsonl`)
+so runs can be read back programmatically.
 
-### Spike A — process/IPC model (`spikes/spikeA-ipc/`) — ✅ PASSED (headless)
+### Spike A — process/IPC model (`spikes/spikeA-ipc/`) — ✅ PASSED (headless + browser)
 Proves a `SharedArrayBuffer` can carry BOINC's `APP_CLIENT_SHM` protocol, i.e. the browser can
 replace `fork()`+`execv()`+SysV-shmem (`client/app_start.cpp`, `lib/app_ipc.h`).
 ```
@@ -200,49 +201,59 @@ $ node spikeA-ipc/client.js
   ... fraction_done 0.10 → 1.00, checkpoint ack, quit ack ...
   SPIKE A: PASSED   (monotonic progress, checkpoint + quit handshakes, clean exit; exit 0)
 ```
-Also shipped as a browser page (`index.html` + `app-worker-browser.js`, page=client / Worker=app).
+Also shipped as a browser page (`index.html` + `app-worker-browser.js`, page=client / Worker=app);
+verified in Chrome (`pass:true`, 10 updates, checkpoint+quit acked). The app uses **paced delivery**
+— it advances `fraction_done` only after the client consumes the previous status — so no progress is
+dropped even when a background tab's timers are throttled.
 
 ### Spike B — GPU detect + compute (`spikes/spikeB-webgpu/`) — ✅ PASSED headless **and** on real GPU
 An integer `xorshift32` kernel (compute-heavy, embarrassingly parallel, **exact in both WGSL `u32`
 and JS**) so the GPU result can be checked bit-for-bit against a CPU reference.
 ```
 $ node spikeB-webgpu/oracle.js
-  correctness : ok (8192 elements match an independent BigInt implementation)
-  CPU baseline: 429.5 ms  (625 M kernel-iters/s, single-threaded JS)   # N=1,048,576  K=256
-  checksum    : 0x27a723a9   # the browser WebGPU run must reproduce this
+  correctness    : ok (8192 elements match an independent BigInt implementation)
+  CPU  1 thread  : 434 ms  (619 M kernel-iters/s)              # N=1,048,576  K=256
+  CPU 12 threads : 102 ms  (2629 M kernel-iters/s)  <- fair CPU baseline (worker_threads)
+  checksum       : 0x27a723a9   # the browser WebGPU run must reproduce this
   SPIKE B ORACLE: PASSED
 ```
 The WebGPU dispatch (`compute.wgsl` + `index.html`) detects the adapter (→ the future
-`PROC_TYPE_WEBGPU_GPU`) and reproduces the checksum while reporting the GPU-vs-CPU speedup.
+`PROC_TYPE_WEBGPU_GPU`) and reproduces the checksum while reporting GPU vs single-thread **and
+all-cores** CPU (a Web-Worker baseline mirroring the oracle) for a fair comparison.
 
-**Real-hardware run (Chrome on Windows, 2026-07-17):**
+**Real-hardware run (Chrome on Windows, AMD RDNA-2, 2026-07-17):**
 ```
-GPU adapter  : AMD, rdna-2, maxComputeWorkgroupSizeX=1024, maxStorageBufferBindingSize=2048 MiB
-elements N   : 1,048,576   iterations K : 256   (268M kernel iterations)
-GPU time     : 5.42 ms    (~49,500 M iters/s)
-CPU time     : 400.06 ms  (671 M iters/s, single-thread JS)
-speedup      : 73.8x
-GPU checksum : 0x27a723a9  ==  CPU checksum : 0x27a723a9   (bit-for-bit)
+GPU adapter   : AMD, rdna-2, maxComputeWorkgroupSizeX=1024, maxStorageBufferBindingSize=2048 MiB
+elements N    : 1,048,576   iterations K : 256   (268M kernel iterations)
+GPU (WebGPU)  :   7.8 ms   (~25,600 M iters/s)
+CPU  1 thread : 420.2 ms   (639 M iters/s)
+CPU 12 threads:  70.6 ms   (3,490 M iters/s)   <- fair baseline
+speedup       : 9.0x vs all-cores CPU   (53.7x vs single-thread JS)
+checksums     : GPU == CPU == CPU-mt == 0x27a723a9  (bit-for-bit)
 SPIKE B: PASSED
 ```
-Caveat for honesty: the CPU baseline is single-thread JS; a native SIMD+threaded CPU build would
-narrow the gap. But a ~74x win on a consumer GPU is strong evidence the browser path can be fast.
+Honest framing: GPU wall-clock jitters run-to-run (~5–10 ms → roughly **7–19x vs all-cores CPU**).
+The headline number to quote upstream is **vs a real all-cores CPU**, not single-thread JS — the GPU
+still wins clearly, and a native SIMD build would narrow it further but not erase it.
 
 ### Environment note
 The headless runs were done under **WSL2** (`/dev/dxg` + D3D12 libs present, but no browser/Vulkan
 in the shell, so `navigator.gpu` is unreachable from the CLI). The GPU run was done by serving the
 pages with **Windows Python** and opening them in **Windows Chrome** (AMD RDNA-2 via D3D12) — all
-launched from WSL:
+launched from WSL. Each page POSTs its result JSON to `/report`, which the server appends to
+`runs.jsonl`, so the run can be read back without copy-paste:
 ```
 # from WSL, using the Windows toolchain:
-cmd.exe /c "cd /d C:\Users\<you>\wasm-spikes && python serve.py 8000"   # COOP/COEP server
+cmd.exe /c "cd /d C:\Users\<you>\wasm-spikes && python serve.py 8000"   # COOP/COEP + /report
 "/mnt/c/Program Files/Google/Chrome/Application/chrome.exe" http://localhost:8000/spikeB-webgpu/
+cat C:\Users\<you>\wasm-spikes\runs.jsonl                               # <- results land here
 ```
 
 ### Phase 0 verdict — COMPLETE ✅
 - Process model (highest risk): **viable** — SharedArrayBuffer IPC works headless and in-browser.
-- Kernel correctness across CPU/GPU: **proven bit-for-bit** on a real AMD GPU.
-- GPU performance: **73.8x** over single-thread JS CPU — pre-answers objection #3.
+- Kernel correctness across CPU/GPU: **proven bit-for-bit** on a real AMD GPU (GPU==1-thread==all-cores).
+- GPU performance: **~9x over an all-cores CPU** baseline (≈54x vs single-thread JS) — pre-answers
+  objection #3 with an honest number.
 - → **Go** for Phase 1 (modern wasm client build).
 
 ---
