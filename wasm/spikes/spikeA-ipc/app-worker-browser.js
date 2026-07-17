@@ -42,12 +42,16 @@ function loop() {
     while ((msg = shm.receive('HEARTBEAT')) !== null) {
         if (msg.includes('<heartbeat/>')) lastHeartbeat = Date.now();
     }
-    if (Date.now() - lastHeartbeat > 2000) {
+    if (Date.now() - lastHeartbeat > 15000) {   // generous: tolerate background-tab throttling
         running = false; clearInterval(tick);
         self.postMessage({ type: 'orphaned' });
         return;
     }
-    fraction = Math.min(1, Math.round((fraction + 0.1) * 10000) / 10000);
-    cpuTime += 0.05;
-    shm.send('APP_STATUS', statusXml('running'));
+    // paced, reliable delivery: only advance once the client has consumed the previous status,
+    // so no fraction_done step is ever dropped (robust to a slow/throttled reader).
+    if (!shm.hasMsg('APP_STATUS')) {
+        fraction = Math.min(1, Math.round((fraction + 0.1) * 10000) / 10000);
+        cpuTime += 0.05;
+        shm.send('APP_STATUS', statusXml('running'));
+    }
 }

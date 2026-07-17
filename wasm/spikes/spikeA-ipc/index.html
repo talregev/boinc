@@ -50,7 +50,7 @@ if (typeof SharedArrayBuffer === 'undefined') {
             if (r.includes('quit')) { gotQuitAck = true; log('  <- quit ack'); }
         }
     }, 20);
-    const guard = setTimeout(() => fail('timed out'), 10000);
+    const guard = setTimeout(() => fail('timed out'), 30000);
     function stop() { clearInterval(hb); clearInterval(poll); clearTimeout(guard); }
     function fail(why) { if (done) return; done = true; stop(); log('\nSPIKE A: FAILED — ' + why); }
     function finish() {

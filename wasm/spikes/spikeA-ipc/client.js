@@ -55,7 +55,7 @@ const poll = setInterval(() => {
     drainReplies();
 }, 20);
 
-const guard = setTimeout(() => fail('timed out: no clean completion within 10s'), 10000);
+const guard = setTimeout(() => fail('timed out: no clean completion within 30s'), 30000);
 
 function drainReplies() {
     let r;
