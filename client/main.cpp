@@ -500,6 +500,26 @@ int boinc_main_loop() {
             printf("=== WASM GUI RPC selftest: request %u ===\n%s\n", i, reply ? reply : "(null)");
             free(reply);
         }
+
+        // Phase 3a: SAB-backed APP_CLIENT_SHM round-trip (the real lib/app_ipc.cpp code path).
+        {
+            SHARED_MEM* shm = (SHARED_MEM*)malloc(sizeof(SHARED_MEM));
+            boinc_wasm_shm_setup(shm);
+            char out[MSG_CHANNEL_SIZE];
+            printf("=== Phase 3a SAB IPC selftest ===\n");
+            bool s1 = shm->app_status.send_msg("<fraction_done>0.42</fraction_done>");
+            bool s2 = shm->app_status.send_msg("second");   // must fail: channel full
+            bool g1 = shm->app_status.get_msg(out);
+            printf(" app_status: send=%d send-when-full=%d get=%d msg='%s'\n", s1, s2, g1, g1?out:"");
+            bool empty = shm->app_status.get_msg(out);      // must fail: now empty
+            printf(" app_status: get-when-empty=%d (expect 0)\n", empty);
+            shm->process_control_request.send_msg("<quit/>");
+            printf(" control: has_msg=%d\n", shm->process_control_request.has_msg());
+            char out2[MSG_CHANNEL_SIZE];
+            shm->process_control_request.get_msg(out2);
+            printf(" control: get='%s' has_after=%d\n", out2, shm->process_control_request.has_msg());
+            free(shm);
+        }
         return 0;
     }
 #endif
