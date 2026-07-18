@@ -415,52 +415,31 @@ extern "C" char* boinc_handle_gui_rpc(const char*);
 // pump the bridge connection's async HTTP ops (it isn't in the managed gui_rpcs set)
 extern "C" void boinc_gui_rpc_poll(void);
 
-// Phase 5 — WebGPU adapter detection. There is no fork/exec GPU-probe in a browser; instead we ask
-// navigator.gpu for the adapter. requestAdapter() is async and the client isn't built with ASYNCIFY,
-// so kick it off once (fire-and-forget) and poll the result from the main loop.
-EM_JS(void, wasm_webgpu_detect_start, (), {
-    if (Module.webgpuState) return;
-    Module.webgpuState = 'pending';
-    (async () => {
-        try {
-            if (!(typeof navigator !== 'undefined' && navigator.gpu)) { Module.webgpuState = 'none'; return; }
-            const a = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
-            if (!a) { Module.webgpuState = 'none'; return; }
-            let info = {}; try { info = a.info || {}; } catch (e) {}
-            Module.webgpuName = [info.vendor||'?', info.architecture||'?', info.device||'?'].join('/');
-            Module.webgpuState = 'ready';
-        } catch (e) { Module.webgpuState = 'none'; }
-    })();
-});
-// 1 = ready (name copied into buf), -1 = no adapter, 0 = still pending
-EM_JS(int, wasm_webgpu_poll, (char* buf, int len), {
-    if (Module.webgpuState === 'ready') { stringToUTF8(Module.webgpuName || '?', buf, len); return 1; }
-    if (Module.webgpuState === 'none') return -1;
+// Phase 5 — WebGPU adapter naming (late fallback). The adapter is detected in preRun
+// (wasm/browser/webgpu_pre.js) and registered as the "webgpu" coproc at GPU-detection time
+// (client/gpu_detect.cpp COPROCS::get). requestAdapter() is async, so the vendor/arch NAME may not
+// be ready by then. If so, this fills host_info.webgpu_name once it arrives, for get_host_info.
+// Returns 1 and copies the name once it is available, else 0.
+EM_JS(int, wasm_webgpu_name, (char* buf, int len), {
+    if (Module.webgpuAdapter && Module.webgpuAdapter.present && Module.webgpuAdapter.name) {
+        stringToUTF8(Module.webgpuAdapter.name, buf, len);
+        return 1;
+    }
     return 0;
 });
 
-// Synchronous WebGPU feature-detect (navigator.gpu presence). Used at init to register a schedulable
-// "webgpu" coproc (client_state.cpp) before work_fetch.init(); the adapter's name is resolved async
-// above. requestAdapter() itself is async, but the *presence* of WebGPU is known synchronously.
-extern "C" EMSCRIPTEN_KEEPALIVE int wasm_webgpu_present(void) {
-    return EM_ASM_INT({ return (typeof navigator !== 'undefined' && navigator.gpu) ? 1 : 0; });
-}
-
-// Drive the detection state machine once per main-loop iteration until it resolves; record the
-// adapter in host_info (reported via get_host_info) and log it to the client log.
-static void wasm_webgpu_detect_poll() {
-    static int state = 0;   // 0 = not started, 1 = pending, 2 = done
-    if (state == 2) return;
-    if (state == 0) { wasm_webgpu_detect_start(); state = 1; return; }
+// Once per main-loop iteration, until the name is set: if the "webgpu" coproc exists but its name
+// hasn't been reported yet, pick it up when requestAdapter() resolves and log it.
+static void wasm_webgpu_name_poll() {
+    static bool done = false;
+    if (done) return;
+    if (strlen(gstate.host_info.webgpu_name)) { done = true; return; }
+    if (rsc_index("webgpu") <= 0) { done = true; return; }   // no WebGPU coproc; nothing to name
     char buf[256];
-    int r = wasm_webgpu_poll(buf, sizeof(buf));
-    if (r == 1) {
+    if (wasm_webgpu_name(buf, sizeof(buf))) {
         safe_strcpy(gstate.host_info.webgpu_name, buf);
-        msg_printf(NULL, MSG_INFO, "Detected WebGPU GPU: %s", buf);
-        state = 2;
-    } else if (r == -1) {
-        msg_printf(NULL, MSG_INFO, "WebGPU: no adapter available");
-        state = 2;
+        msg_printf(NULL, MSG_INFO, "WebGPU adapter: %s", buf);
+        done = true;
     }
 }
 #endif
@@ -504,7 +483,7 @@ static void wasm_main_loop_iter() {
     // Runs on the browser event loop. The web UI's GUI RPC calls land *between*
     // iterations, so client state is never touched reentrantly.
     boinc_gui_rpc_poll();   // deliver replies for the bridge's async HTTP ops
-    wasm_webgpu_detect_poll();   // Phase 5: detect the WebGPU adapter (async, resolves once)
+    wasm_webgpu_name_poll();   // Phase 5: fill the WebGPU adapter name once requestAdapter resolves
     if (!boinc_main_loop_body(0.0)) {
         emscripten_cancel_main_loop();
         finalize();

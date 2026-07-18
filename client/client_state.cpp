@@ -351,11 +351,6 @@ void CLIENT_STATE::show_host_info() {
 
 // TODO: the following 3 should be members of COPROCS
 
-#ifdef WASM
-// synchronous WebGPU feature-detect, defined in client/main.cpp (used to register a "webgpu" coproc)
-extern "C" int wasm_webgpu_present(void);
-#endif
-
 int rsc_index(const char* name) {
     const char* nm = strcmp(name, "CUDA")?name:GPU_TYPE_NVIDIA;
         // handle old state files
@@ -666,32 +661,9 @@ int CLIENT_STATE::init() {
     }
     coprocs.add_other_coproc_types();
 
-#ifdef WASM
-    // Phase 5: register the browser's WebGPU adapter as a schedulable coproc named "webgpu", so the
-    // scheduler can target a GPU-typed app version. An <app_version> with
-    // <coproc><type>webgpu</type><count>1</count></coproc> binds to this entry via rsc_index(), and
-    // the generic coproc machinery (rsc_work_fetch[MAX_RSC], assign_coprocs) schedules it — no new
-    // PROC_TYPE needed. navigator.gpu presence is synchronous (the adapter's human name is resolved
-    // asynchronously, see client/main.cpp). This must run before work_fetch.init().
-    // NB: the plan_class must avoid the substrings opencl/cuda/ati or RESOURCE_USAGE::check_gpu_libs
-    // would demand OpenCL/CUDA properties this coproc doesn't have.
-    if (wasm_webgpu_present() && coprocs.n_rsc < MAX_RSC && rsc_index("webgpu") < 0) {
-        COPROC c;
-        safe_strcpy(c.type, "webgpu");
-        c.count = 1;
-        c.peak_flops = 1e12;            // nominal 1 TFLOP; refined once benchmarked
-        c.available_ram = 256.*MEGA;    // nominal
-        c.have_opencl = false;
-        c.have_cuda = false;
-        c.non_gpu = false;
-        c.device_nums[0] = 0;
-        c.clear_usage();
-        coprocs.coprocs[coprocs.n_rsc++] = c;
-        msg_printf(NULL, MSG_INFO, "Registered WebGPU adapter as a coproc (type webgpu, count 1)");
-    }
-#endif
-
     host_info.coprocs = coprocs;
+    // NB (WASM): the "webgpu" coproc was registered in COPROCS::get(); host_info.webgpu_name is
+    // filled by the main loop (client/main.cpp) once requestAdapter() resolves the adapter's name.
 
     if (coprocs.none() ) {
         msg_printf(NULL, MSG_INFO, "No usable GPUs found");

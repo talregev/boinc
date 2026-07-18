@@ -27,7 +27,7 @@ export CPPFLAGS="-msimd128"
 #   servers from a browser); see client/http_curl.cpp wasm_fetch_exec.
 export LDFLAGS="-sALLOW_MEMORY_GROWTH=1 -sSTACK_SIZE=5MB -sINITIAL_MEMORY=64MB -sFETCH \
 -sEXPORTED_RUNTIME_METHODS=ccall,cwrap,UTF8ToString -sEXPORTED_FUNCTIONS=_main,_malloc,_free \
--lidbfs.js --pre-js $PWD/wasm/browser/persist_pre.js"
+-lidbfs.js --pre-js $PWD/wasm/browser/persist_pre.js --pre-js $PWD/wasm/browser/webgpu_pre.js"
 debug_flags=""
 
 if [ "debug" == "$1" ]; then

@@ -112,6 +112,18 @@
 using std::string;
 using std::vector;
 
+#ifdef WASM
+#include <emscripten.h>
+// Read the WebGPU adapter detected in preRun (wasm/browser/webgpu_pre.js). Returns 1 if a WebGPU
+// adapter is present and copies its name (vendor/arch/device; may be empty if requestAdapter()
+// hasn't resolved yet — the client fills it in later, see main.cpp), 0 if there is no adapter.
+EM_JS(int, wasm_webgpu_info, (char* buf, int len), {
+    if (!(Module.webgpuAdapter && Module.webgpuAdapter.present)) return 0;
+    stringToUTF8(Module.webgpuAdapter.name || "", buf, len);
+    return 1;
+});
+#endif
+
 #ifndef _WIN32
 jmp_buf resume;
 
@@ -150,6 +162,34 @@ void COPROCS::get(
     bool use_all, vector<string>&descs, vector<string>&warnings,
     IGNORE_GPU_INSTANCE& ignore_gpu_instance
 ) {
+#ifdef WASM
+    // Browser: there is no fork/exec, so the native GPU probe can't run (it only errors). The GPU
+    // path here is WebGPU: detection was kicked off in preRun (webgpu_pre.js) and its presence +
+    // (usually) name are available synchronously. Register the adapter as the "webgpu" coproc so a
+    // GPU-typed app version can be scheduled on it (see client_state.cpp / coproc_sched.cpp).
+    n_rsc = 1;
+    safe_strcpy(coprocs[0].type, "CPU");
+    char name[256] = "";
+    if (wasm_webgpu_info(name, sizeof(name)) && n_rsc < MAX_RSC) {
+        COPROC c;
+        safe_strcpy(c.type, "webgpu");
+        c.count = 1;
+        c.peak_flops = 1e12;            // nominal 1 TFLOP; refined once benchmarked
+        c.available_ram = 256.*MEGA;    // nominal
+        c.have_opencl = false;
+        c.have_cuda = false;
+        c.non_gpu = false;
+        c.device_nums[0] = 0;
+        c.clear_usage();
+        safe_strcpy(c.opencl_prop.name, strlen(name) ? name : "WebGPU");
+        coprocs[n_rsc++] = c;
+        descs.push_back(string("WebGPU GPU: ") + (strlen(name) ? name : "(adapter present; naming...)"));
+    } else {
+        descs.push_back(string("No WebGPU adapter available"));
+    }
+    return;
+#endif
+
 #if USE_CHILD_PROCESS_TO_DETECT_GPUS
     // detect_gpus() can cause crashes even with try/catch,
     // so do it in a separate process that writes a file

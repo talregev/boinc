@@ -151,6 +151,12 @@ GetMACAddress(io_iterator_t intfIterator, char* buffer)
 #endif
 
 int get_mac_address(char* address) {
+#ifdef WASM
+    // No network interfaces in the browser sandbox: the SIOCGIF* ioctls below only error
+    // (ioctl(SIOCGIFCONF): Invalid argument). There is no MAC address to report.
+    address[0] = 0;
+    return -1;
+#endif
 #if defined(_WIN32)
     IP_ADAPTER_INFO AdapterInfo[16]; // Allocate information for up to 16 NICs
     DWORD dwBufLen = sizeof(AdapterInfo); // Save memory size of buffer
