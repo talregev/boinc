@@ -439,6 +439,13 @@ EM_JS(int, wasm_webgpu_poll, (char* buf, int len), {
     return 0;
 });
 
+// Synchronous WebGPU feature-detect (navigator.gpu presence). Used at init to register a schedulable
+// "webgpu" coproc (client_state.cpp) before work_fetch.init(); the adapter's name is resolved async
+// above. requestAdapter() itself is async, but the *presence* of WebGPU is known synchronously.
+extern "C" EMSCRIPTEN_KEEPALIVE int wasm_webgpu_present(void) {
+    return EM_ASM_INT({ return (typeof navigator !== 'undefined' && navigator.gpu) ? 1 : 0; });
+}
+
 // Drive the detection state machine once per main-loop iteration until it resolves; record the
 // adapter in host_info (reported via get_host_info) and log it to the client log.
 static void wasm_webgpu_detect_poll() {

@@ -464,12 +464,39 @@ benchmark: GPU 31839 M-iter/s vs CPU(wasm) 518 M-iter/s = 61.5x    # AMD RDNA-2,
 ```
 GPU and wasm CPU agree to the bit, and the GPU is ~60x the single-thread wasm CPU for this kernel.
 
+### WebGPU as a schedulable coproc — the scheduler targets a GPU-typed app version ✅
+The adapter isn't just *reported* — it's registered as a **schedulable coprocessor** so a GPU-typed
+app version (a `plan_class` + a `<coproc>` requirement) is dispatched and reserved like any other GPU.
+Crucially this needed **no new `PROC_TYPE`**: BOINC's coproc parse/match/reserve/work-fetch chain is
+already generic over the `coprocs[]` array keyed by a type *string* (`rsc_index()` →
+`assign_coprocs()` → `rsc_work_fetch[MAX_RSC]`), with generic fallbacks everywhere the hardwired
+4-GPU `coproc_type_name_to_num()` is consulted.
+
+- `client/client_state.cpp` — after GPU detection, register a `COPROC` with `type="webgpu"`,
+  `count=1` (modeled on `add_other_coproc_types()`), before `work_fetch.init()`. Presence is decided
+  synchronously via `wasm_webgpu_present()` (`navigator.gpu` is a sync property; only
+  `requestAdapter()` is async). The plan_class is `webgpu` (avoids the `opencl`/`cuda`/`ati`
+  substrings that would make `RESOURCE_USAGE::check_gpu_libs` demand OpenCL/CUDA props).
+- `client/main.cpp` — `wasm_webgpu_present()` sync feature-detect.
+- `wasm/sample_app/mock_project.py` — with a `gpu` argument, advertise the app version as
+  `<plan_class>webgpu</plan_class>` + `<coproc><type>webgpu</type><count>1</count></coproc>`.
+
+Proof (visible Chrome, real GPU; `mock_project.py 8100 <url> gpu`):
+```
+[---] Registered WebGPU adapter as a coproc (type webgpu, count 1)
+[WASM Test Project] Requesting new tasks for CPU and webgpu     # webgpu is a first-class resource
+TASK wu_1_0 plan_class="webgpu"  <= scheduled on the webgpu coproc
+[WASM Test Project] Finished upload of wu_1_0_out ... Reporting 1 completed tasks
+```
+The GPU-typed app version binds to the `webgpu` coproc (`rsc_index("webgpu")`), the client requests
+and reserves it, and the task runs + reports the bit-exact GPU checksum. **Phase 5 complete: detect,
+report, *and* schedule on the GPU — entirely client-side.**
+
 ### Still deferred
-- **Coproc / scheduler targeting** — the client detects + *reports* the adapter, but making it a
-  formal `COPROC` (a new `PROC_TYPE_WEBGPU`) so the scheduler dispatches a GPU-typed app version
-  (plan_class) is a cross-repo change (client **and** server) and is left as the next step. Today the
-  WebGPU app runs as a normal app version that uses WebGPU internally. `GPU detection failed` in the
-  client log is the native fork/exec probe, expected on wasm.
+- **Server-side plan-class matching** — the *client* now advertises the `webgpu` coproc and accepts a
+  `webgpu` app version; a real BOINC **server** would need matching plan-class logic to *choose* to
+  send it (the mock advertises it unconditionally). That's the remaining cross-repo slice (Phase 7).
+  `GPU detection failed` in the client log is the native fork/exec probe, expected on wasm.
 - **External GUI RPC monitoring** — as above.
 
 ---

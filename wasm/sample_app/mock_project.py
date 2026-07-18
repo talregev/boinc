@@ -15,6 +15,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8100
 BASE = sys.argv[2] if len(sys.argv) > 2 else f'http://localhost:{PORT}/'
 HERE = os.path.dirname(os.path.abspath(__file__))
+# "gpu" anywhere on the command line -> advertise a GPU-typed app version (plan_class webgpu +
+# a <coproc>webgpu</coproc> requirement), so the client schedules it on the WebGPU coproc it
+# detected. The plan_class avoids the substrings opencl/cuda/ati on purpose (see the client).
+GPU = 'gpu' in sys.argv
 
 MASTER = f'''<html><head><title>WASM Test Project</title></head><body>
 <!-- BOINC scheduler locations -->
@@ -34,6 +38,10 @@ def scheduler_reply(req_body):
     appwasm = file_bytes('app.wasm') or b''
     inp = b'wasm input payload\n'
     deadline = int(time.time()) + 7*86400
+    # GPU mode: mark the app version as needing the "webgpu" coproc so the client schedules it as a
+    # GPU task (it must have detected a WebGPU adapter, else it reports "missing GPU type webgpu").
+    plan_class = 'webgpu' if GPU else ''
+    coproc_xml = '<coproc>\n<type>webgpu</type>\n<count>1</count>\n</coproc>\n' if GPU else ''
     return f'''<?xml version="1.0" encoding="ISO-8859-1"?>
 <scheduler_reply>
 <scheduler_version>80300</scheduler_version>
@@ -77,9 +85,10 @@ def scheduler_reply(req_body):
 <app_name>sample</app_name>
 <version_num>100</version_num>
 <platform>{platform}</platform>
+<plan_class>{plan_class}</plan_class>
 <avg_ncpus>1</avg_ncpus>
 <flops>1000000000</flops>
-<file_ref>
+{coproc_xml}<file_ref>
 <file_name>app.js</file_name>
 <main_program/>
 </file_ref>
@@ -107,7 +116,7 @@ def scheduler_reply(req_body):
 <report_deadline>{deadline}</report_deadline>
 <platform>{platform}</platform>
 <version_num>100</version_num>
-<plan_class></plan_class>
+<plan_class>{plan_class}</plan_class>
 <file_ref>
 <file_name>wu_1_0_out</file_name>
 <open_name>out</open_name>

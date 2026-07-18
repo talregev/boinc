@@ -96,14 +96,22 @@ function projectAttach() {
 }
 
 // Phase 3b/d: watch the task's fraction_done (reported by the app Worker over the SAB).
+// Phase 5: also report the result's plan_class — "webgpu" proves it bound to the GPU-typed
+// app version (scheduled on the webgpu coproc), not the plain CPU version.
 function taskPoll() {
-    let last = -1;
+    let last = -1, reportedPlan = false;
     setInterval(function () {
         const r = callRpc('<boinc_gui_rpc_request>\n<get_results/>\n</boinc_gui_rpc_request>\n');
         const m = r.match(/<active_task>[\s\S]*?<fraction_done>([\d.]+)<[\s\S]*?<\/active_task>/);
         const state = (r.match(/<active_task_state>(\d+)</) || [])[1];
         if (m) { const f = parseFloat(m[1]); if (f !== last) { last = f;
             line($rpc, 'rpc', 'rpc', 'TASK wu_1_0: fraction_done=' + f.toFixed(3) + ' (active_task_state=' + state + ')'); } }
+        if (!reportedPlan) {
+            const pc = (r.match(/<result>[\s\S]*?<plan_class>([^<]*)<[\s\S]*?<\/result>/) || [])[1];
+            if (pc !== undefined) { reportedPlan = true;
+                line($rpc, 'rpc', 'rpc', 'TASK wu_1_0 plan_class="' + pc + '"' + (pc==='webgpu' ? '  <= scheduled on the webgpu coproc' : ''));
+                post('projstate', 'task_plan_class=' + pc); }
+        }
     }, 2000);
 }
 
