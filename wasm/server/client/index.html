@@ -1,0 +1,45 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>BOINC wasm client — real server demo</title>
+<style>
+  body { font: 13px/1.5 ui-monospace, monospace; max-width: 900px; margin: 1.5rem auto; padding: 0 1rem; }
+  h1 { font: 600 1.2rem system-ui; } h2 { font: 600 .95rem system-ui; margin: 1rem 0 .3rem; }
+  .box { background:#111; color:#ccc; padding:.7rem 1rem; border-radius:8px; white-space:pre-wrap; overflow-y:auto; }
+  #log { max-height:46vh; } #rpc { max-height:30vh; }
+  .err{color:#f66;} .out{color:#9c9;} .sys{color:#89f;} .rpc{color:#fc6;} .muted{color:#888;}
+  @media (prefers-color-scheme: light){ .box{background:#f4f4f4;color:#222;} }
+</style>
+<h1>BOINC wasm client — real server demo</h1>
+<p class="muted">Runs the wasm BOINC client in the browser and attaches it to <b>this</b> real BOINC
+server (same origin), which serves a real wasm science app. Requires a cross-origin-isolated,
+WebGPU-capable browser.</p>
+<h2>client log</h2><div id="log" class="box">loading boinc_client.js …</div>
+<h2>live GUI RPC</h2><div id="rpc" class="box">waiting for init…</div>
+<script>
+const $log=document.getElementById('log'), $rpc=document.getElementById('rpc');
+function show(el,cls,t){const d=document.createElement('div');d.className=cls;d.textContent=t;el.appendChild(d);el.scrollTop=el.scrollHeight;}
+const PROJECT_URL = new URL('/boincserver/', location.origin).href;   // same-origin real server
+function callRpc(req){const p=Module.ccall('boinc_handle_gui_rpc','number',['string'],[req]);const r=Module.UTF8ToString(p);Module._free(p);return r;}
+
+let ready=false;
+async function onInit(){
+  ready=true;
+  show($rpc,'sys','>>> client initialized <<<');
+  callRpc('<boinc_gui_rpc_request>\n<set_run_mode>\n<always/>\n</set_run_mode>\n</boinc_gui_rpc_request>\n');
+  callRpc('<boinc_gui_rpc_request>\n<set_network_mode>\n<always/>\n</set_network_mode>\n</boinc_gui_rpc_request>\n');
+  // A demo account key is pre-created on the server by register_wasm_app.sh and served at ./account.txt.
+  let auth='';
+  try{ auth=(await (await fetch('account.txt',{cache:'no-store'})).text()).trim(); }catch(e){}
+  show($rpc,'rpc','account key: '+(auth?auth.slice(0,10)+'…':'(missing account.txt)'));
+  callRpc('<boinc_gui_rpc_request>\n<project_attach>\n<use_config_file>0</use_config_file>\n<project_url>'+PROJECT_URL+'</project_url>\n<authenticator>'+auth+'</authenticator>\n<project_name>boincserver</project_name>\n</project_attach>\n</boinc_gui_rpc_request>\n');
+  show($rpc,'rpc','>>> project_attach to '+PROJECT_URL);
+  setInterval(()=>{const r=callRpc('<boinc_gui_rpc_request>\n<get_results/>\n</boinc_gui_rpc_request>\n');
+    const m=r.match(/<active_task>[\s\S]*?<fraction_done>([\d.]+)</);
+    if(m) show($rpc,'rpc','TASK fraction_done='+parseFloat(m[1]).toFixed(3));},2000);
+}
+var Module={arguments:[],print:t=>{show($log,'out',t);if(!ready&&t.includes('Initialization completed'))onInit();},
+  printErr:t=>show($log,'err',t),onAbort:w=>show($log,'err','onAbort: '+w),locateFile:p=>p};
+show($log,'sys','crossOriginIsolated='+self.crossOriginIsolated);
+const s=document.createElement('script');s.src='boinc_client.js';
+s.onerror=()=>show($log,'err','failed to load boinc_client.js');document.body.appendChild(s);
+</script>

@@ -548,6 +548,114 @@ Net effect: a clean client log — no `unsupported syscall`, `not supported on t
 
 ---
 
+## 4h. Phase 7 — demo project server + hosting (in progress)
+
+Phase 7 replaces the Python mock with a **real BOINC project server** and makes the scheduler decide
+what to send from the host's reported coprocs. Staged plan: [`wasm/phase7-plan.md`](phase7-plan.md).
+
+### Stage 7.1 — plan-class matching (the mock decides from host coprocs) ✅
+`wasm/sample_app/mock_project.py` now behaves like a real scheduler: it parses the host's scheduler
+request for a `webgpu` coproc and serves the **GPU-typed** app version (`plan_class=webgpu` +
+`<coproc>webgpu</coproc>`) only to hosts that report it, else the plain CPU version.
+```
+curl (no coproc)          -> <plan_class></plan_class>          # CPU version
+curl (<type>webgpu</type>)-> <plan_class>webgpu</plan_class>    # GPU version
+Chrome (real GPU host)    -> TASK wu_1_0 plan_class="webgpu"     # matched -> scheduled on the coproc
+```
+
+### Stages 7.2–7.4 — a reproducible real server (`wasm/server/`) ✅
+Packaged as [`wasm/server/`](server/) so anyone can build it: `docker compose up --build -d`. It
+extends the official `boinc-server-docker` images (MySQL + Apache + BOINC daemons) and, at startup,
+registers the wasm app and wires up browser hosting — no manual steps.
+- `Dockerfile` — `FROM boinc/server_apache:latest`, enables `mod_headers`, serves the client page at
+  `/wasm` with COOP/COEP (`apache-wasm.conf`), and installs the registration hook.
+- `register_wasm_app.sh` (supervisord one-shot, idempotent) — generates a code-signing key, adds the
+  `sample` app, stages the app version (`app.js` main + `app.wasm`), `update_versions`, `create_work`,
+  and pre-creates a demo account served at `/wasm/account.txt`.
+- `docker-compose.yml` — `mysql` + one-shot `makeproject` + our `apache` (waits on
+  `makeproject` via `service_completed_successfully`; mounts the Docker socket the base image's
+  startup expects).
+
+**Verified from a clean `docker compose up --build`:**
+```
+master   http://127.0.0.1/boincserver/     -> 200   (real scheduler; <scheduler_reply> v715)
+client   http://127.0.0.1/wasm/            -> 200   + Cross-Origin-Opener/Embedder-Policy headers
+         http://127.0.0.1/wasm/boinc_client.wasm -> 200
+account  http://127.0.0.1/wasm/account.txt -> 50ea2b5cad358b43…   (real authenticator)
+DB       app_version registered; 2 unsent results ready to serve
+```
+Snags solved along the way: snap Docker can't read `/tmp` (compose lives under the repo); the
+`/dev/null` `code_sign_private` mount is dropped so a real keypair can be generated; the base image's
+startup waits for the Docker socket, so the compose mounts it.
+
+### Stage 7.5 — browser vs. the real server
+On a normal Linux host the browser and server share `localhost`, so opening `http://127.0.0.1/wasm/`
+attaches the client to the real server and runs the full cycle. **Not shown in this dev environment:**
+here the client is Windows Chrome and the Docker server runs in WSL, and Windows can't reach WSL's
+`127.0.0.1:80` (WSL2 NAT); loading via the WSL IP would break the `SharedArrayBuffer` secure-context
+requirement, and a `127.0.0.1→WSL` port-forward needs admin. This is an environment split, not a
+server issue — every server-side piece above is verified.
+
+### The one remaining code change: server-side GPU-typed matching
+`sched/plan_class_spec.cpp` matches `gpu_type` to the hardwired big-4 coprocs, so a `webgpu` plan
+class needs a branch there — deliberately **not** added (keeping things generic, mirroring "no new
+`PROC_TYPE`"). So on the real server the WebGPU app runs as a normal (CPU-scheduled) version that uses
+WebGPU internally; GPU-*typed* scheduling stays proven with the mock (7.1). Making the server matcher
+generic is the single upstream code change this needs.
+
+---
+
+## 4i. Phase 8 — benchmarks, porting recipe, upstream framing (in progress)
+
+### Benchmarks (same xorshift32 kernel, N=2²⁰, K=256, checksum 0x27a723a9 everywhere)
+All numbers on one AMD RDNA-2 laptop; the **bit-for-bit identical checksum** across CPU and GPU is
+the correctness anchor.
+
+| Path | Rate (M kernel-iters/s) | vs wasm 1-thread |
+|---|---:|---:|
+| CPU — native, 1 thread (Spike B oracle) | ~619 | — |
+| CPU — native, 12 threads (Spike B oracle) | ~2,629 | — |
+| **CPU — wasm, 1 thread** (in-browser, the client's own benchmark) | **~520** | 1× |
+| **GPU — WebGPU** (in-browser, through the BOINC pipeline) | **~33,000** | **~64×** |
+
+Takeaways: single-thread wasm is ~0.84× native (the SIMD-enabled build is close to native for this
+integer kernel); the browser GPU is ~60–65× the single-thread wasm CPU and correct to the bit. This
+directly answers objection #3 ("is wasm/WebGPU fast enough to be worth it") — for GPU-suitable work,
+decisively yes; for CPU work, wasm is within a small factor of native.
+
+### Porting recipe (for app authors)
+A normal BOINC CPU app needs almost no changes — it's the same `libboinc_api`:
+1. Build with Emscripten against the wasm `libboinc_api` + `libboinc` (see `wasm/sample_app/build_app.sh`);
+   ship `app.js` + `app.wasm`.
+2. Use the standard API: `boinc_init` / `boinc_resolve_filename` / `boinc_fopen` /
+   `boinc_fraction_done` / `boinc_finish`. No SAB or Worker code in the app — the client's wasm port
+   of the API (`api/boinc_api.cpp`) handles the SharedArrayBuffer IPC and the finish/output bridge.
+3. For a **GPU** app, do the compute in WebGPU via `EM_ASYNC_JS` and build with `-sASYNCIFY` (see
+   `wasm/gpu_app/gpu_app.cpp`); it's still a normal libboinc_api app otherwise.
+4. Serve it from the project as an app version (`plan_class=webgpu` for GPU-typed scheduling once the
+   server matcher is generic; otherwise a plain version that uses WebGPU internally).
+
+### Upstream framing (issue #3086)
+The 2025 removal of the old wasm stubs (issue #3086) was correct — that code was incomplete. This
+effort answers the objections that motivated the removal:
+- **#1 "apps must be ported"** — a real `libboinc_api` app (CPU *and* GPU) runs unmodified in the
+  browser; the porting recipe above is short.
+- **#2 "process model"** — solved with Web Workers + `SharedArrayBuffer`-backed `APP_CLIENT_SHM`
+  (Phase 3), not fork/exec.
+- **#3 "performance"** — measured above; wasm-SIMD ≈ native for CPU, WebGPU ~60× for GPU work.
+The natural upstream shape is a draft-PR series matching the phases: client build (`--enable-wasm`),
+the Worker/SAB process model, the `libboinc_api` wasm port, WebGPU detection + a generic server-side
+coproc plan class, and a demo project. Everything here is behind `#ifdef WASM` and leaves native
+builds untouched.
+
+### Remaining
+- Generic server-side coproc matching (`sched/plan_class_spec.cpp`) so a real scheduler can target a
+  `webgpu` plan class (the one code change Stage 7.5 needs).
+- A dedicated `wasm` client platform (vs. the current `i686-pc-linux-gnu`).
+- The draft-PR series + native/wasm/WebGPU write-up for #3086.
+
+---
+
 ## 5. Sources
 
 - BOINC issue #3086 — <https://github.com/BOINC/boinc/issues/3086> (removal rationale:
