@@ -493,9 +493,9 @@ and reserves it, and the task runs + reports the bit-exact GPU checksum. **Phase
 report, *and* schedule on the GPU — entirely client-side.**
 
 ### Still deferred
-- **Server-side plan-class matching** — the *client* now advertises the `webgpu` coproc and accepts a
-  `webgpu` app version; a real BOINC **server** would need matching plan-class logic to *choose* to
-  send it (the mock advertises it unconditionally). That's the remaining cross-repo slice (Phase 7).
+- **Server-side plan-class matching** — done in Phase 7 (Stage 7.6): the real scheduler
+  (`sched/plan_class_spec.cpp`) now records a generic coproc requirement so a `webgpu` plan class is
+  matched from the host's reported coproc, verified A/B against the native-built scheduler.
   `GPU detection failed` in the client log is the native fork/exec probe, expected on wasm.
 - **External GUI RPC monitoring** — as above.
 
@@ -602,12 +602,35 @@ environment the client is Windows Chrome and the server is Docker-in-WSL, so a o
 bridges Windows `127.0.0.1:80` to the WSL server (keeping the `SharedArrayBuffer` secure context):
 `netsh interface portproxy add v4tov4 listenport=80 listenaddress=127.0.0.1 connectport=80 connectaddress=<WSL_IP>`.
 
-### The one remaining code change: server-side GPU-typed matching
-`sched/plan_class_spec.cpp` matches `gpu_type` to the hardwired big-4 coprocs, so a `webgpu` plan
-class needs a branch there — deliberately **not** added (keeping things generic, mirroring "no new
-`PROC_TYPE`"). So on the real server the WebGPU app runs as a normal (CPU-scheduled) version that uses
-WebGPU internally; GPU-*typed* scheduling stays proven with the mock (7.1). Making the server matcher
-generic is the single upstream code change this needs.
+### Stage 7.6 — server-side GPU-typed matching (generic coproc plan class) ✅
+The last piece: make the *real* scheduler choose the `webgpu` app version from the host's reported
+coprocs (7.1 proved this only with the Python mock). It needed **no `webgpu` special-case** —
+`sched/plan_class_spec.cpp` already matches any non-big-4 `gpu_type` generically via
+`COPROCS::lookup_type()`. The one real gap: for a coproc that reports a nonzero `peak_flops` (ours
+does, 1e12), the generic path computed the projected flops but never recorded the coproc *requirement*
+in `HOST_USAGE` — so the reply carried no `<coproc>` and the client would run the version as a plain
+CPU app. The fix is the generic `else` in `PLAN_CLASS_SPEC::check` (mirroring the existing
+`peak_flops==0` path): set `host_usage.custom_coproc_type` + `gpu_usage`, which `sched_types.cpp`
+writes as `<coproc><type>webgpu</type>`. No hardwired `webgpu` branch — it fires for *any* custom
+coproc type.
+
+Config, no more code: dropping a `plan_class_spec.xml` with a `webgpu` class (`gpu_type=webgpu`, **no
+`<opencl/>`** — a WebGPU device isn't OpenCL) into the project dir switches the scheduler to
+plan_class_spec for non-empty plan classes (the empty CPU class is unaffected — `app_plan` is only
+called for non-empty ones). `wasm/server/` now installs it and registers a second, GPU-typed app
+version (`…__webgpu`) of the same app, so a webgpu host gets the GPU version and other hosts get CPU.
+
+Verified by building the real scheduler natively and running `PLAN_CLASS_SPEC::check` against a faked
+`webgpu` coproc — A/B, same `cgi` link (see `sched/plan_class_spec.cpp`'s `#ifdef PLAN_CLASS_TEST`):
+```
+stock code : check(webgpu) SUCCEEDED  custom_coproc_type=''        gpu_usage=0  -> no <coproc> (runs as CPU)
+with fix   : check(webgpu) SUCCEEDED  custom_coproc_type='webgpu'  gpu_usage=1  -> <coproc>webgpu</coproc>
+```
+The match succeeds either way; only the fix records the requirement — so it is both necessary and
+sufficient. This is the single upstream server-side code change the effort needed; native builds are
+untouched (the change lives inside the existing `gpu_type` handling). Deploying it to the live demo
+container additionally needs a scheduler binary rebuilt for that image's OS (Debian 9); the code +
+config + A/B proof are complete.
 
 ---
 
@@ -638,8 +661,8 @@ A normal BOINC CPU app needs almost no changes — it's the same `libboinc_api`:
    of the API (`api/boinc_api.cpp`) handles the SharedArrayBuffer IPC and the finish/output bridge.
 3. For a **GPU** app, do the compute in WebGPU via `EM_ASYNC_JS` and build with `-sASYNCIFY` (see
    `wasm/gpu_app/gpu_app.cpp`); it's still a normal libboinc_api app otherwise.
-4. Serve it from the project as an app version (`plan_class=webgpu` for GPU-typed scheduling once the
-   server matcher is generic; otherwise a plain version that uses WebGPU internally).
+4. Serve it from the project as an app version (`plan_class=webgpu` for GPU-typed scheduling — the
+   server matcher is now generic, Stage 7.6; or a plain version that uses WebGPU internally).
 
 ### Upstream framing (issue #3086)
 The 2025 removal of the old wasm stubs (issue #3086) was correct — that code was incomplete. This
@@ -655,10 +678,9 @@ coproc plan class, and a demo project. Everything here is behind `#ifdef WASM` a
 builds untouched.
 
 ### Remaining
-- Generic server-side coproc matching (`sched/plan_class_spec.cpp`) so a real scheduler can target a
-  `webgpu` plan class (the one code change Stage 7.5 needs).
 - A dedicated `wasm` client platform (vs. the current `i686-pc-linux-gnu`).
-- The draft-PR series + native/wasm/WebGPU write-up for #3086.
+- The draft-PR series + native/wasm/WebGPU write-up for #3086. (Generic server-side coproc matching in
+  `sched/plan_class_spec.cpp` — previously listed here — is done; see Stage 7.6.)
 
 ---
 

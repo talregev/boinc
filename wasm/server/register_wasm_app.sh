@@ -25,6 +25,14 @@ DBU=$(grep -oE '<db_user>[^<]*' config.xml | cut -d'>' -f2)
 DBP=$(grep -oE '<db_passwd>[^<]*' config.xml | cut -d'>' -f2)
 mysql_q() { mysql -h "$DBH" -u"$DBU" -p"$DBP" "$DBN" -N -e "$1" 2>/dev/null; }
 
+# Install the plan-class spec so the scheduler can match the generic 'webgpu' coproc type and send a
+# GPU-typed app version. Idempotent (plain copy). Presence of this file switches the scheduler to
+# plan_class_spec for non-empty plan classes; the empty (CPU) plan class is unaffected.
+if [ -f /wasm-plan_class_spec.xml ]; then
+    cp /wasm-plan_class_spec.xml "$PROJECT/plan_class_spec.xml"
+    echo "[wasm-register] installed plan_class_spec.xml (webgpu plan class)"
+fi
+
 # Register the app only if not already done (idempotent); account creation below runs regardless.
 if [ "$(mysql_q "select count(*) from app_version where plan_class='' and appid=(select id from app where name='$APP');")" = "0" ]; then
 
@@ -45,6 +53,26 @@ cp /wasm/app.js   "$VDIR/app.js"
 cp /wasm/app.wasm "$VDIR/app.wasm"
 cat > "$VDIR/version.xml" <<EOF
 <version>
+    <file>
+        <physical_name>app.js</physical_name>
+        <main_program/>
+    </file>
+    <file>
+        <physical_name>app.wasm</physical_name>
+    </file>
+</version>
+EOF
+echo "[wasm-register] staging GPU-typed app version ($APP 1.0 ${PLATFORM}__webgpu): WebGPU app.js + app.wasm"
+# Same platform, plan_class 'webgpu'. The BOINC convention is a "<platform>__<plan_class>" version
+# dir; version.xml names the plan class. update_versions signs + registers it as a second app version
+# of the same app, so a host reporting the 'webgpu' coproc gets this GPU version and others get CPU.
+GDIR="apps/$APP/1.0/${PLATFORM}__webgpu"
+mkdir -p "$GDIR"
+cp /wasm-gpu/app.js   "$GDIR/app.js"
+cp /wasm-gpu/app.wasm "$GDIR/app.wasm"
+cat > "$GDIR/version.xml" <<EOF
+<version>
+    <plan_class>webgpu</plan_class>
     <file>
         <physical_name>app.js</physical_name>
         <main_program/>

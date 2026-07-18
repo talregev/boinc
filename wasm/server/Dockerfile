@@ -21,7 +21,12 @@ COPY client/boinc_client.js client/boinc_client.wasm  /wasm-client/
 RUN chown -R boincadm:boincadm /wasm-client
 
 # The app version files the registration script stages into the project.
+#   /wasm      : the CPU sample app (plan_class '')
+#   /wasm-gpu  : the WebGPU app (plan_class 'webgpu') — same app, GPU-typed version
+#   plan_class_spec.xml : makes the scheduler match the generic 'webgpu' coproc type
 COPY wasm/sample_app/app.js wasm/sample_app/app.wasm  /wasm/
+COPY wasm/gpu_app/app.js    wasm/gpu_app/app.wasm     /wasm-gpu/
+COPY wasm/server/plan_class_spec.xml                  /wasm-plan_class_spec.xml
 
 # Register the app + create a workunit at startup (idempotent, waits for the project).
 COPY wasm/server/register_wasm_app.sh /wasm-register.sh
