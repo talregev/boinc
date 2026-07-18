@@ -501,6 +501,53 @@ report, *and* schedule on the GPU — entirely client-side.**
 
 ---
 
+## 4g. Host detection on wasm — async CPU benchmark + no-op cleanups ✅
+
+The native client does several things a browser tab can't: `fork()` a benchmark child, `wait4()` it,
+`ioctl(SIOCGIFCONF)` network interfaces, SysV-`detach_shmem`. Each printed a scary "unsupported" /
+"not supported" line even though nothing was actually wrong. These are replaced with browser-native
+equivalents or guarded.
+
+### Async CPU benchmark in a Web Worker (replaces fork + wait4)
+The native benchmark `fork()`s a child per CPU that runs Whetstone/Dhrystone and writes a result file;
+the parent `waitpid()`s it. In a browser the analog of a child process is a **Web Worker**, so
+`fork`→Worker and `waitpid`→result-poll — and it stays fully async (the tab never blocks).
+
+- `wasm/benchmark/benchmark.cpp` (new): runs the same `whetstone()` + `dhrystone()` cores as the
+  native client and prints one `BENCHMARK_RESULT fpops=… iops=… membw=…` line. Built by
+  `build_benchmark.sh` and **embedded into the client** (`--embed-file`); `ci_make.sh` builds it
+  before the client links.
+- `client/cs_benchmark.cpp` — on wasm, `start_cpu_benchmarks()` spawns a Worker
+  (`wasm_spawn_benchmark`) instead of `fork()`; `check_benchmark()` reaps the posted result
+  (`wasm_poll_benchmark`) instead of `waitpid()`; the ~30 s file-phased FP/INT state machine is
+  skipped (the Worker runs the whole benchmark at once).
+- `client/main.cpp` — the benchmark is reaped from the main loop, not only `poll_slow_events()`
+  (which runs its benchmark poll late, after pollers that return early during busy attach/download).
+- `lib/util.cpp` — `boinc_calling_thread_cpu_time()` uses **wall-clock** on wasm. `getrusage()` is a
+  constant stub in emscripten, so the benchmarks' "run until `min_cpu_time`" loop would never end; a
+  dedicated Worker only computes, so wall-clock ≈ CPU time.
+
+Proof (Chrome): `CPU benchmark (async Worker): p_fpops=6.04 GFLOPS, p_iops=6.02 GIOPS` — a real
+measured value (not the default), reported over `get_host_info`, with **no `__syscall_wait4`** in the
+build.
+
+### No-op / guarded natives
+- **`detach_shmem`** — `ACTIVE_TASK::cleanup_task()` on wasm frees the `malloc`'d, SAB-backed
+  `SHARED_MEM` (the SharedArrayBuffer is released when the app Worker is terminated) instead of the
+  SysV `detach_shmem`/`destroy_shmem`, which only printed "not supported on this platform".
+- **`ioctl(SIOCGIFCONF)`** — `get_mac_address()` returns early on wasm (no NICs in the sandbox).
+- **`GPU detection failed` / `read_coproc_info_file -108`** — removed by the Phase 5 detection path
+  (`COPROCS::get()` skips the native fork/exec probe; see 4f).
+- **`Project communication failed: attempting access to reference site` / `BOINC can't access
+  Internet`** — `NET_STATUS::contact_reference_site()` is a no-op on wasm. A browser tab can only
+  reach the CORS-scoped project via `emscripten_fetch`, not an arbitrary cross-origin URL like the
+  default `berkeley.edu` test site, so the probe always "failed" and falsely reported no Internet.
+
+Net effect: a clean client log — no `unsupported syscall`, `not supported on this platform`, or
+`SIOCGIFCONF` noise — while CPU/GPU detection and crunching still work.
+
+---
+
 ## 5. Sources
 
 - BOINC issue #3086 — <https://github.com/BOINC/boinc/issues/3086> (removal rationale:
