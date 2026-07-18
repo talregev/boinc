@@ -21,6 +21,8 @@ services:
       - "mysql:/var/lib/mysql"
 
   # One-shot: creates the BOINC project (DB + project dir) into the shared volume, then exits.
+  # Idempotent: skips if the project already exists, so a repeated `docker compose up` (without a
+  # `down -v`) doesn't fail trying to recreate it.
   makeproject:
     image: boinc/server_makeproject:latest-defaultargs
     depends_on:
@@ -30,6 +32,10 @@ services:
       - "secrets:/run/secrets"
     hostname: makeproject
     restart: "no"
+    command:
+      - /bin/sh
+      - -c
+      - 'test -f /home/boincadm/project.dst/config.xml && echo "makeproject: project already exists, skipping" || makeproject-step2.sh'
     environment:
       - URL_BASE=http://127.0.0.1
       - PROJECT=boincserver
