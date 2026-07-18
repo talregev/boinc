@@ -484,6 +484,10 @@ static void wasm_main_loop_iter() {
     // iterations, so client state is never touched reentrantly.
     boinc_gui_rpc_poll();   // deliver replies for the bridge's async HTTP ops
     wasm_webgpu_name_poll();   // Phase 5: fill the WebGPU adapter name once requestAdapter resolves
+    // Reap the async CPU-benchmark Worker here rather than only in poll_slow_events(): that runs it
+    // late (after pollers that return early during busy attach/download), so the benchmark result
+    // could sit unreaped. cpu_benchmarks_poll() self-gates on benchmarks_running and is rate-limited.
+    gstate.cpu_benchmarks_poll();
     if (!boinc_main_loop_body(0.0)) {
         emscripten_cancel_main_loop();
         finalize();

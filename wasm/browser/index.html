@@ -40,7 +40,7 @@ let clientReady = false;
 function onStdout(t) {
     show($log, 'out', t);
     // Phase 7: forward only the interesting lines (avoid a fetch firehose that drops messages)
-    if (/project|sched|master|download|task|app|work|fetch|contact|error|fail|Started|Requesting|Reason|WebGPU|GPU/i.test(t))
+    if (/project|sched|master|download|task|app|work|fetch|contact|error|fail|Started|Requesting|Reason|WebGPU|GPU|benchmark/i.test(t))
         post('clientlog', t);
     if (!clientReady && t.includes('Initialization completed')) {
         clientReady = true;
@@ -54,7 +54,26 @@ function onStdout(t) {
         } catch (e) { line($rpc, 'err', 'err', 'get_host_info failed: ' + e); }
         projectAttach();   // Phase 7: attach to the mock project and get a task
         webgpuCheck();     // Phase 5: poll get_host_info for the detected WebGPU adapter
+        benchCheck();      // CPU benchmark (async Worker): poll get_host_info for p_fpops
     }
+}
+
+// Confirm the async CPU-benchmark Worker produced a real measured p_fpops. get_host_info starts at a
+// default and jumps to the measured value once the Worker's result is reaped (a few seconds in), so
+// report once the value changes from the initial reading (or after 20s).
+function benchCheck() {
+    let tries = 0, first = -1;
+    const iv = setInterval(function () {
+        tries++;
+        const hi = callRpc('<boinc_gui_rpc_request>\n<get_host_info/>\n</boinc_gui_rpc_request>\n');
+        const f = parseFloat((hi.match(/<p_fpops>([\d.eE+]+)</) || [])[1] || '0');
+        const iops = parseFloat((hi.match(/<p_iops>([\d.eE+]+)</) || [])[1] || '0');
+        if (first < 0 && f > 0) first = f;
+        if ((f > 0 && f !== first) || tries > 20) { clearInterval(iv);
+            line($rpc, 'rpc', 'rpc', 'CPU benchmark (async Worker): p_fpops=' + (f/1e9).toFixed(2) + ' GFLOPS, p_iops=' + (iops/1e9).toFixed(2) + ' GIOPS');
+            post('projstate', 'p_fpops=' + f + ' p_iops=' + iops);
+        }
+    }, 1000);
 }
 
 // Phase 5: the client detects the WebGPU adapter asynchronously; poll get_host_info until
@@ -186,7 +205,7 @@ function driveRpc() {
 var Module = {
     arguments: [],
     print:    onStdout,
-    printErr: t => show($log, 'err', t),   // stderr is noisy (wait4/poll warnings); page only
+    printErr: t => show($log, 'err', t),   // stderr shown on the page only
     onAbort:  w => line($log, 'abort', 'err', 'onAbort: ' + w),
     onExit:   c => line($log, 'exit', 'sys', 'runtime exit, code=' + c),
     locateFile: (p) => p,
