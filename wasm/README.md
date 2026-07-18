@@ -588,13 +588,19 @@ Snags solved along the way: snap Docker can't read `/tmp` (compose lives under t
 `/dev/null` `code_sign_private` mount is dropped so a real keypair can be generated; the base image's
 startup waits for the Docker socket, so the compose mounts it.
 
-### Stage 7.5 — browser vs. the real server
-On a normal Linux host the browser and server share `localhost`, so opening `http://127.0.0.1/wasm/`
-attaches the client to the real server and runs the full cycle. **Not shown in this dev environment:**
-here the client is Windows Chrome and the Docker server runs in WSL, and Windows can't reach WSL's
-`127.0.0.1:80` (WSL2 NAT); loading via the WSL IP would break the `SharedArrayBuffer` secure-context
-requirement, and a `127.0.0.1→WSL` port-forward needs admin. This is an environment split, not a
-server issue — every server-side piece above is verified.
+### Stage 7.5 — browser vs. the real server ✅
+Opening `http://127.0.0.1/wasm/` runs the whole cycle against the real server: the browser client
+creates an account, attaches, the real scheduler sends work, the client downloads the app, runs it in
+a Worker, uploads the output, and reports — all recorded in the real DB:
+```
+host created (hostid=1); results sent=2
+result server_state=5 (over), outcome=1 (SUCCESS)
+upload/…/sample_wu_1_0_r…  ->  "wasm result: crunched 50 steps over 19 input bytes / input was: wasm input payload"
+```
+On a normal Linux host the browser and server share `localhost`, so this works directly. In this dev
+environment the client is Windows Chrome and the server is Docker-in-WSL, so a one-time port-forward
+bridges Windows `127.0.0.1:80` to the WSL server (keeping the `SharedArrayBuffer` secure context):
+`netsh interface portproxy add v4tov4 listenport=80 listenaddress=127.0.0.1 connectport=80 connectaddress=<WSL_IP>`.
 
 ### The one remaining code change: server-side GPU-typed matching
 `sched/plan_class_spec.cpp` matches `gpu_type` to the hardwired big-4 coprocs, so a `webgpu` plan
