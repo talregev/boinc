@@ -15,10 +15,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8100
 BASE = sys.argv[2] if len(sys.argv) > 2 else f'http://localhost:{PORT}/'
 HERE = os.path.dirname(os.path.abspath(__file__))
-# "gpu" anywhere on the command line -> advertise a GPU-typed app version (plan_class webgpu +
-# a <coproc>webgpu</coproc> requirement), so the client schedules it on the WebGPU coproc it
-# detected. The plan_class avoids the substrings opencl/cuda/ati on purpose (see the client).
-GPU = 'gpu' in sys.argv
+# "gpu" on the command line forces the WebGPU app version regardless of the request (handy for
+# testing without a GPU host). Normally the app version is chosen per-request by plan-class matching
+# (see scheduler_reply): the WebGPU version goes only to hosts that report a "webgpu" coproc.
+FORCE_GPU = 'gpu' in sys.argv
 
 MASTER = f'''<html><head><title>WASM Test Project</title></head><body>
 <!-- BOINC scheduler locations -->
@@ -38,10 +38,16 @@ def scheduler_reply(req_body):
     appwasm = file_bytes('app.wasm') or b''
     inp = b'wasm input payload\n'
     deadline = int(time.time()) + 7*86400
-    # GPU mode: mark the app version as needing the "webgpu" coproc so the client schedules it as a
-    # GPU task (it must have detected a WebGPU adapter, else it reports "missing GPU type webgpu").
-    plan_class = 'webgpu' if GPU else ''
-    coproc_xml = '<coproc>\n<type>webgpu</type>\n<count>1</count>\n</coproc>\n' if GPU else ''
+    # Plan-class matching (what a real scheduler does): serve the GPU-typed app version (plan_class
+    # "webgpu" + a <coproc>webgpu</coproc> requirement) only to hosts that report a "webgpu" coproc in
+    # their scheduler request; otherwise serve the plain CPU version. The client writes the coproc it
+    # detected as <coproc><type>webgpu</type>...; presence means count>=1.
+    host_has_webgpu = '<type>webgpu</type>' in req_body
+    gpu = FORCE_GPU or host_has_webgpu
+    plan_class = 'webgpu' if gpu else ''
+    coproc_xml = '<coproc>\n<type>webgpu</type>\n<count>1</count>\n</coproc>\n' if gpu else ''
+    print('[mock] plan-class match: host_has_webgpu=%s force=%s -> serving %s app version'
+          % (host_has_webgpu, FORCE_GPU, plan_class or 'CPU'))
     return f'''<?xml version="1.0" encoding="ISO-8859-1"?>
 <scheduler_reply>
 <scheduler_version>80300</scheduler_version>
