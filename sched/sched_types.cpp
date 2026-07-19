@@ -96,9 +96,17 @@ int CLIENT_APP_VERSION::parse(XML_PARSER& xp) {
             if (!retval) {
                 int rt = coproc_type_name_to_num(coproc_req.type);
                 if (rt <= 0) {
-                    log_messages.printf(MSG_NORMAL,
-                        "UNKNOWN COPROC TYPE %s\n", coproc_req.type
-                    );
+                    // Not a built-in GPU type. Custom/project-defined coprocs
+                    // (e.g. "webgpu") are scheduled generically via the
+                    // <coprocs> inventory + plan_class_spec, not tracked as a
+                    // per-type work-fetch resource here, so skip this request
+                    // quietly (it's not an error). Diagnostic under debug only.
+                    if (config.debug_version_select) {
+                        log_messages.printf(MSG_NORMAL,
+                            "coproc work request for non-built-in type '%s' (scheduled generically)\n",
+                            coproc_req.type
+                        );
+                    }
                     continue;
                 }
                 host_usage.proc_type = rt;
@@ -1436,6 +1444,10 @@ int HOST::parse(XML_PARSER& xp) {
         if (xp.parse_string("cache_l2", stemp)) continue;
         if (xp.parse_string("cache_l3", stemp)) continue;
 #endif
+        // wasm/WebGPU clients report a webgpu adapter name in host_info; the
+        // scheduler doesn't store display names for custom coprocs, so accept
+        // and ignore it rather than logging it as unrecognized.
+        if (xp.parse_string("webgpu_name", stemp)) continue;
 
         log_messages.printf(MSG_NORMAL,
             "HOST::parse(): unrecognized: %s\n", xp.parsed_tag
