@@ -66,19 +66,22 @@ echo "[wasm-register] staging GPU-typed app version ($APP 1.0 ${PLATFORM}__webgp
 # Same platform, plan_class 'webgpu'. The BOINC convention is a "<platform>__<plan_class>" version
 # dir; version.xml names the plan class. update_versions signs + registers it as a second app version
 # of the same app, so a host reporting the 'webgpu' coproc gets this GPU version and others get CPU.
+# Unique physical filenames (app_gpu.*): BOINC files are immutable + project-global by physical name,
+# so the GPU version can't reuse the CPU version's app.js/app.wasm. The WebGPU app is built as
+# app_gpu.js/app_gpu.wasm (see wasm/gpu_app/build_app.sh) so its Emscripten loader finds its own wasm.
 GDIR="apps/$APP/1.0/${PLATFORM}__webgpu"
 mkdir -p "$GDIR"
-cp /wasm-gpu/app.js   "$GDIR/app.js"
-cp /wasm-gpu/app.wasm "$GDIR/app.wasm"
+cp /wasm-gpu/app_gpu.js   "$GDIR/app_gpu.js"
+cp /wasm-gpu/app_gpu.wasm "$GDIR/app_gpu.wasm"
 cat > "$GDIR/version.xml" <<EOF
 <version>
     <plan_class>webgpu</plan_class>
     <file>
-        <physical_name>app.js</physical_name>
+        <physical_name>app_gpu.js</physical_name>
         <main_program/>
     </file>
     <file>
-        <physical_name>app.wasm</physical_name>
+        <physical_name>app_gpu.wasm</physical_name>
     </file>
 </version>
 EOF

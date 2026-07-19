@@ -14,6 +14,6 @@ em++ wasm/gpu_app/gpu_app.cpp api/boinc_api.cpp \
     -DWASM -D_GNU_SOURCE -I. -Ilib -Iapi \
     -O2 -sASYNCIFY -sEXIT_RUNTIME=1 \
     lib/.libs/libboinc.a \
-    -o wasm/gpu_app/app.js
+    -o wasm/gpu_app/app_gpu.js
 
-echo "built wasm/gpu_app/app.js + app.wasm"
+echo "built wasm/gpu_app/app_gpu.js + app_gpu.wasm"
