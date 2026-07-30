@@ -16,20 +16,28 @@ source "$EMSDK_ROOT/emsdk_env.sh"
 wasm/update_emsdk_vcpkg.sh
 
 # Enable WASM SIMD (WebAssembly 3.0) for the numeric paths.
-export CPPFLAGS="-msimd128"
+# -pthread: WasmFS's OPFS backend runs on a dedicated thread, so the whole client must be built
+# shared-memory-aware (compile + link). The client itself stays single-threaded; only OPFS uses a thread.
+export CPPFLAGS="-msimd128 -pthread"
 # Link flags:
 # - grow memory on demand + a real stack (the 64 KB default overflows on real work);
 # - export ccall/UTF8ToString + malloc/free so the web UI can call the GUI RPC bridge
 #   (boinc_handle_gui_rpc, kept via EMSCRIPTEN_KEEPALIVE) and free its malloc'd reply.
-# - IDBFS + persist_pre.js: back the data dir with IndexedDB so client_state.xml,
-#   projects and tasks survive page reloads (OPFS swap comes when the client is in a Worker).
+# - WasmFS + OPFS: back the data dir with the Origin Private File System (real disk-backed,
+#   random-access, durable storage) so client_state.xml, projects and tasks survive page reloads.
+#   The client runs in a Web Worker (see wasm/browser/client_worker.js), so OPFS sync access
+#   handles are usable; the OPFS backend is mounted at /boinc_data in C at main() start
+#   (client/main.cpp). Needs -pthread (the OPFS backend runs on a dedicated thread) + a small
+#   pthread pool so the backend thread is ready without a spawn round-trip.
 # - FETCH: HTTP transport for HTTP_OP via emscripten_fetch (libcurl sockets can't reach
 #   servers from a browser); see client/http_curl.cpp wasm_fetch_exec.
+# NB: --embed-file (the CPU benchmark module) is NOT here — it's scoped to the client link in
+# client/Makefile.am (BUILD_WITH_WASM), because --embed-file + -sWASMFS breaks autoconf's compiler
+# check (its no-output conftest auto-enables NODERAWFS, which forbids --embed-file).
 export LDFLAGS="-sALLOW_MEMORY_GROWTH=1 -sSTACK_SIZE=5MB -sINITIAL_MEMORY=64MB -sFETCH \
+-sWASMFS -pthread -sPTHREAD_POOL_SIZE=4 \
 -sEXPORTED_RUNTIME_METHODS=ccall,cwrap,UTF8ToString -sEXPORTED_FUNCTIONS=_main,_malloc,_free \
--lidbfs.js --pre-js $PWD/wasm/browser/persist_pre.js --pre-js $PWD/wasm/browser/webgpu_pre.js \
---embed-file $PWD/wasm/benchmark/benchmark.js@/benchmark.js \
---embed-file $PWD/wasm/benchmark/benchmark.wasm@/benchmark.wasm"
+--pre-js $PWD/wasm/browser/webgpu_pre.js"
 debug_flags=""
 
 if [ "debug" == "$1" ]; then

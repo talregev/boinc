@@ -410,10 +410,34 @@ static int finalize() {
 
 #ifdef WASM
 #include <emscripten.h>
+#include <emscripten/wasmfs.h>
 // browser GUI RPC string bridge, defined in gui_rpc_server_ops.cpp
 extern "C" char* boinc_handle_gui_rpc(const char*);
 // pump the bridge connection's async HTTP ops (it isn't in the managed gui_rpcs set)
 extern "C" void boinc_gui_rpc_poll(void);
+
+// Mount the persistent BOINC data dir on OPFS (Origin Private File System) and chdir into it,
+// BEFORE the client touches client_state.xml/projects/tasks. Replaces the old IDBFS --pre-js mount.
+// The client runs in a Web Worker (wasm/browser/client_worker.js), so this is not the browser main
+// thread: wasmfs_create_opfs_backend() is legal here and OPFS synchronous access handles work.
+// OPFS gives real disk-backed, random-access, durable storage (vs IDBFS's whole-file-in-memory +
+// coarse syncfs), so data survives reloads without an explicit flush loop.
+static void wasm_mount_data_dir() {
+    backend_t opfs = wasmfs_create_opfs_backend();
+    if (!opfs) { fprintf(stderr, "OPFS backend unavailable; data dir will not persist\n"); return; }
+    int rc = wasmfs_create_directory("/boinc_data", 0777, opfs);
+    if (rc != 0) { fprintf(stderr, "OPFS mount at /boinc_data failed (%d)\n", rc); return; }
+    if (chdir("/boinc_data") != 0) { fprintf(stderr, "chdir /boinc_data failed\n"); return; }
+    // wasm default: accept unsigned project apps (no browser code-signing infra; apps come from the
+    // CORS-scoped project over HTTPS).
+    if (access("cc_config.xml", F_OK) != 0) {
+        FILE* f = fopen("cc_config.xml", "w");
+        if (f) {
+            fputs("<cc_config>\n<options>\n<unsigned_apps_ok>1</unsigned_apps_ok>\n</options>\n</cc_config>\n", f);
+            fclose(f);
+        }
+    }
+}
 
 // Phase 5 — WebGPU adapter naming (late fallback). The adapter is detected in preRun
 // (wasm/browser/webgpu_pre.js) and registered as the "webgpu" coproc at GPU-detection time
@@ -571,6 +595,10 @@ int boinc_main_loop() {
 
 int main(int argc, char** argv) {
     int retval = 0;
+
+#ifdef WASM
+    wasm_mount_data_dir();   // OPFS-backed persistent data dir; must precede any data-dir access
+#endif
 
     coprocs.set_path_to_client(argv[0]);    // Used to launch a child process for --detect_gpus
 

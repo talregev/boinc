@@ -148,6 +148,12 @@ void PROCINFO::get_mem_info() {
 // or its command contains 'boinc'
 //
 int procinfo_setup(PROC_MAP& pm) {
+#ifdef WASM
+    // A browser tab has no /proc and no OS process table; BOINC science apps run as Web Workers and
+    // are tracked separately. Return an empty process map instead of failing to open /proc.
+    (void)pm;
+    return 0;
+#else
     DIR *dir;
     dirent *piddir;
     FILE* f;
@@ -232,6 +238,7 @@ int procinfo_setup(PROC_MAP& pm) {
     closedir(dir);
     find_children(pm);
     return 0;
+#endif  // WASM
 }
 
 // get total CPU time (user + kernel)

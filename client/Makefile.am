@@ -113,6 +113,16 @@ endif
 endif
 boinc_client_LDADD = $(LIBBOINC) $(LIBBOINC_CRYPT) $(BOINC_EXTRA_LIBS) $(PTHREAD_LIBS)
 
+if BUILD_WITH_WASM
+# Embed the CPU benchmark module (built by wasm/benchmark/build_benchmark.sh) into the client's
+# virtual filesystem at /benchmark.js|.wasm; cs_benchmark.cpp runs it as a nested Web Worker.
+# Scoped to the client link on purpose: --embed-file combined with -sWASMFS breaks autoconf's
+# compiler check (its no-output conftest auto-enables NODERAWFS), so it must NOT be in the global
+# configure-time LDFLAGS.
+boinc_client_LDFLAGS += --embed-file $(abs_top_srcdir)/wasm/benchmark/benchmark.js@/benchmark.js
+boinc_client_LDFLAGS += --embed-file $(abs_top_srcdir)/wasm/benchmark/benchmark.wasm@/benchmark.wasm
+endif
+
 boinc_clientdir = $(bindir)
 
 if OS_ARM_LINUX
