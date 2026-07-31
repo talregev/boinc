@@ -126,6 +126,23 @@
 using std::vector;
 using std::string;
 
+#ifdef WASM
+#include <emscripten.h>
+// The app runs as a Web Worker spawned by the wasm client (client/app_start.cpp). There is no
+// process exit / file system the client can see, so boinc_finish() bridges the app's output files
+// back to the client and posts a completion record. The client reaps it in check_app_exited().
+EM_JS(void, wasm_app_finish, (int status), {
+    var files = {};
+    try {
+        FS.readdir('.').forEach(function(n) {
+            if (n === '.' || n === '..') return;
+            try { if (FS.isFile(FS.stat(n).mode)) files[n] = FS.readFile(n); } catch (e) {}
+        });
+    } catch (e) {}
+    postMessage({ boincFinish: status, files: files });
+});
+#endif
+
 //#define VERBOSE
     // enable a bunch of fprintfs to stderr
 
@@ -313,6 +330,14 @@ static int setup_shared_mem() {
         return 0;
     }
     app_client_shm = new APP_CLIENT_SHM;
+
+#ifdef WASM
+    // The wasm client handed this Worker the SharedArrayBuffer that backs APP_CLIENT_SHM
+    // (Module.boincShm, set by the Worker glue). Attach to it — no SysV/mmap in the browser.
+    app_client_shm->shm = (SHARED_MEM*)malloc(sizeof(SHARED_MEM));
+    boinc_wasm_shm_setup(app_client_shm->shm);
+    return 0;
+#endif
 
 #ifdef _WIN32
     snprintf(buf, sizeof(buf), "%s%s", SHM_PREFIX, aid.shmem_seg_name);
@@ -703,7 +728,13 @@ int boinc_init_options_general(BOINC_OPTIONS& opt) {
     options.check_heartbeat = false;
 #else
     char buf[256];
+#ifdef WASM
+    // No slot lockfile in the browser: the client spawns exactly one Worker per slot, and fcntl
+    // locking on the Worker's MEMFS is a no-op that could otherwise stall startup.
+    if (false) {
+#else
     if (options.main_program) {
+#endif
         // make sure we're the only app running in this slot
         //
         retval = file_lock.lock(LOCKFILE);
@@ -856,6 +887,19 @@ int boinc_finish_message(int status, const char* msg, bool is_notice) {
         boinc_msg_prefix(buf, sizeof(buf)), status
     );
     finishing = true;
+
+#ifdef WASM
+    // Push a final fraction_done=1, then bridge the app's output files to the client and post the
+    // completion status (client reaps it in check_app_exited()). No finish-file/exit dance: the
+    // client terminates this Worker once it has the outputs.
+    if (!standalone) {
+        update_app_progress(last_wu_cpu_time, last_checkpoint_cpu_time);
+    }
+    wasm_app_finish(status);
+    boinc_exit(status);
+    return 0;
+#endif
+
     if (!standalone) {
         boinc_sleep(2.0);   // let the timer thread send final messages
         boinc_disable_timer_thread = true;     // then disable it
@@ -1549,6 +1593,13 @@ static void worker_signal_handler(int) {
 int start_timer_thread() {
     char buf[256];
 
+#ifdef WASM
+    // No background timer thread in a single-threaded wasm Worker. Progress reporting and
+    // process-control polling are driven synchronously from boinc_fraction_done() instead.
+    (void)buf;
+    return 0;
+#endif
+
 #ifdef _WIN32
 
     // get the worker thread handle
@@ -1717,6 +1768,18 @@ void boinc_end_critical_section() {
 
 int boinc_fraction_done(double x) {
     fraction_done = x;
+#ifdef WASM
+    // No timer thread in the wasm Worker: report progress to the client and poll process
+    // control (suspend/resume/quit) synchronously each time the app reports progress.
+    if (!standalone) {
+        if (options.send_status_msgs) {
+            update_app_progress(last_wu_cpu_time, last_checkpoint_cpu_time);
+        }
+        if (options.handle_process_control) {
+            handle_process_control_msg();
+        }
+    }
+#endif
     return 0;
 }
 

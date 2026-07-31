@@ -195,6 +195,10 @@ void CLIENT_STATE::parse_cmdline(int argc, char** argv) {
             cc_config.no_gpus = true;
         } else if (ARG(no_gui_rpc)) {
             no_gui_rpc = true;
+#ifdef WASM
+        } else if (ARG(wasm_selftest)) {
+            wasm_selftest = true;
+#endif
         } else if (ARG(no_info_fetch)) {
             cc_config.no_info_fetch = true;
         } else if (ARG(no_priority_change)) {

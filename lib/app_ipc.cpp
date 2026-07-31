@@ -34,6 +34,59 @@
 
 #include "app_ipc.h"
 
+#ifdef WASM
+#include <emscripten.h>
+
+// Phase 3 (Option B): APP_CLIENT_SHM over a SharedArrayBuffer. The wasm client and each science
+// app are separate wasm modules (separate linear memories), so the SysV shared segment is replaced
+// by a SAB (Module.boincShm, a Uint8Array). A MSG_CHANNEL routes its buf[] ops to the SAB at its
+// fixed byte offset within SHARED_MEM (identical layout on both sides). buf[0] is the "present"
+// flag (accessed with Atomics); buf[1..] is the NUL-terminated message.
+
+char* boinc_wasm_shm_base = NULL;   // base of the local SHARED_MEM, for channel-offset arithmetic
+
+EM_JS(void, wasm_shm_alloc, (int size), {
+    if (!Module.boincShm) Module.boincShm = new Uint8Array(new SharedArrayBuffer(size));
+});
+EM_JS(int, wasm_shm_has, (int off), {
+    return Atomics.load(Module.boincShm, off) !== 0 ? 1 : 0;
+});
+EM_JS(int, wasm_shm_get, (int off, int outPtr), {
+    var u8 = Module.boincShm;
+    if (Atomics.load(u8, off) === 0) return 0;
+    var i = 0;
+    for (; i < 1022; i++) { var c = u8[off + 1 + i]; HEAPU8[outPtr + i] = c; if (c === 0) break; }
+    HEAPU8[outPtr + i] = 0;
+    Atomics.store(u8, off, 0);          // clear the present flag
+    return 1;
+});
+EM_JS(int, wasm_shm_send, (int off, int msgPtr, int overwrite), {
+    var u8 = Module.boincShm;
+    if (!overwrite && Atomics.load(u8, off) !== 0) return 0;
+    var i = 0;
+    for (; i < 1022; i++) { var c = HEAPU8[msgPtr + i]; u8[off + 1 + i] = c; if (c === 0) break; }
+    u8[off + 1 + i] = 0;
+    Atomics.store(u8, off, 1);          // set the present flag last
+    return 1;
+});
+EM_JS(void, wasm_shm_zero, (int size), {
+    if (Module.boincShm) Module.boincShm.fill(0, 0, size);
+});
+
+static inline int chan_off(const void* c) {
+    return (int)((char*)c - boinc_wasm_shm_base);
+}
+
+void boinc_wasm_shm_setup(SHARED_MEM* base) {
+    boinc_wasm_shm_base = (char*)base;
+    wasm_shm_alloc(sizeof(SHARED_MEM));   // no-op if the app Worker already set Module.boincShm
+}
+
+bool MSG_CHANNEL::has_msg() {
+    return wasm_shm_has(chan_off(this)) != 0;
+}
+#endif  // WASM
+
 using std::string;
 
 APP_INIT_DATA::APP_INIT_DATA() {
@@ -427,26 +480,42 @@ APP_CLIENT_SHM::APP_CLIENT_SHM() : shm(NULL) {
 }
 
 bool MSG_CHANNEL::get_msg(char *msg) {
+#ifdef WASM
+    return wasm_shm_get(chan_off(this), (int)(intptr_t)msg) != 0;
+#else
     if (!buf[0]) return false;
     strlcpy(msg, buf+1, MSG_CHANNEL_SIZE-1);
     buf[0] = 0;
     return true;
+#endif
 }
 
 bool MSG_CHANNEL::send_msg(const char *msg) {
+#ifdef WASM
+    return wasm_shm_send(chan_off(this), (int)(intptr_t)msg, 0) != 0;
+#else
     if (has_msg()) return false;
     strlcpy(buf+1, msg, MSG_CHANNEL_SIZE-1);
     buf[0] = 1;
     return true;
+#endif
 }
 
 void MSG_CHANNEL::send_msg_overwrite(const char* msg) {
+#ifdef WASM
+    wasm_shm_send(chan_off(this), (int)(intptr_t)msg, 1);
+#else
     strlcpy(buf+1, msg, MSG_CHANNEL_SIZE-1);
     buf[0] = 1;
+#endif
 }
 
 void APP_CLIENT_SHM::reset_msgs() {
+#ifdef WASM
+    wasm_shm_zero(sizeof(SHARED_MEM));   // clear flags in the shared SAB, not the local struct
+#else
     memset(shm, 0, sizeof(SHARED_MEM));
+#endif
 }
 
 void url_to_project_dir(char* url, char* dir, int dirsize) {

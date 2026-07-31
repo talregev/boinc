@@ -177,6 +177,12 @@ int podman_init_pid = 0;
 #define LINUX_LIKE_SYSTEM 1
 #endif
 
+#ifdef __EMSCRIPTEN__
+// emscripten_num_logical_cores() returns navigator.hardwareConcurrency (the only CPU
+// fact the browser exposes); it is available without linking -pthread.
+#include <emscripten/threading.h>
+#endif
+
 // Returns the offset between LOCAL STANDARD TIME and UTC.
 // LOCAL_STANDARD_TIME = UTC_TIME + get_timezone().
 //
@@ -1462,6 +1468,15 @@ int HOST_INFO::get_cpu_info() {
 #elif HAVE_SYS_SYSTEMINFO_H
     sysinfo(SI_PLATFORM, p_vendor, sizeof(p_vendor));
     sysinfo(SI_ISALIST, p_model, sizeof(p_model));
+#elif defined(__EMSCRIPTEN__)
+    // WebAssembly host: the sandbox hides the real CPU vendor/model, so report a
+    // stable identifier plus the logical core count (navigator.hardwareConcurrency).
+    safe_strcpy(p_vendor, "WebAssembly");
+    {
+        int ncores = emscripten_num_logical_cores();
+        if (ncores < 1) ncores = 1;
+        snprintf(p_model, sizeof(p_model), "WebAssembly VM (%d logical cores)", ncores);
+    }
 #else
 #error Need to specify a method to get p_vendor, p_model
 #endif

@@ -228,6 +228,16 @@ int ACTIVE_TASK::preempt(PREEMPT_TYPE preempt_type, int reason) {
 // and kill any remaining subsidiary processes.
 //
 void ACTIVE_TASK::cleanup_task() {
+#ifdef WASM
+    // The APP_CLIENT_SHM is a SAB-backed SHARED_MEM malloc'd in start() (there is no SysV shmem in a
+    // browser). Just free it; the SharedArrayBuffer is released when the app Worker is terminated
+    // (wasm_kill_app). Calling detach_shmem/destroy_shmem here would only print "not supported".
+    if (app_client_shm.shm) {
+        free(app_client_shm.shm);
+        app_client_shm.shm = NULL;
+    }
+    return;
+#endif
 #ifdef _WIN32
     if (process_handle) {
         CloseHandle(process_handle);

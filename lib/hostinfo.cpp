@@ -87,6 +87,7 @@ void HOST_INFO::clear_host_info() {
     safe_strcpy(mac_address, "");
 
     safe_strcpy(virtualbox_version, "");
+    safe_strcpy(webgpu_name, "");
     num_opencl_cpu_platforms = 0;
 
 #ifdef __APPLE__
@@ -163,6 +164,7 @@ int HOST_INFO::parse(XML_PARSER& xp, bool static_items_only) {
 #endif
         if (xp.parse_str("product_name", product_name, sizeof(product_name))) continue;
         if (xp.parse_str("virtualbox_version", virtualbox_version, sizeof(virtualbox_version))) continue;
+        if (xp.parse_str("webgpu_name", webgpu_name, sizeof(webgpu_name))) continue;
         if (xp.match_tag("coprocs")) {
             this->coprocs.parse(xp);
         }
@@ -286,6 +288,14 @@ int HOST_INFO::write(
         xml_escape(virtualbox_version, buf, sizeof(buf));
         out.printf(
             "    <virtualbox_version>%s</virtualbox_version>\n",
+            buf
+        );
+    }
+    if (strlen(webgpu_name)) {
+        char buf[256];
+        xml_escape(webgpu_name, buf, sizeof(buf));
+        out.printf(
+            "    <webgpu_name>%s</webgpu_name>\n",
             buf
         );
     }

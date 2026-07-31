@@ -408,6 +408,127 @@ static int finalize() {
     return 0;
 }
 
+#ifdef WASM
+#include <emscripten.h>
+#include <emscripten/wasmfs.h>
+#include <emscripten/threading.h>
+// browser GUI RPC string bridge, defined in gui_rpc_server_ops.cpp
+extern "C" char* boinc_handle_gui_rpc(const char*);
+// pump the bridge connection's async HTTP ops (it isn't in the managed gui_rpcs set)
+extern "C" void boinc_gui_rpc_poll(void);
+
+// Mount the persistent BOINC data dir on OPFS (Origin Private File System) and chdir into it,
+// BEFORE the client touches client_state.xml/projects/tasks. Replaces the old IDBFS --pre-js mount.
+// The client runs in a Web Worker (wasm/browser/client_worker.js), so this is not the browser main
+// thread: wasmfs_create_opfs_backend() is legal here and OPFS synchronous access handles work.
+// OPFS gives real disk-backed, random-access, durable storage (vs IDBFS's whole-file-in-memory +
+// coarse syncfs), so data survives reloads without an explicit flush loop.
+static void wasm_mount_data_dir() {
+    // OPFS's synchronous access handles require a dedicated thread: wasmfs_create_opfs_backend()
+    // aborts if called on the main thread without Asyncify/JSPI. In the browser the client runs in a
+    // Web Worker (wasm/browser/client_worker.js), so this is fine. But a main-thread invocation — the
+    // Node CI smoke test (`boinc_client.js --version`), or any non-Worker host — would abort here, so
+    // skip OPFS there and run against the in-memory FS (no persistence, but the client still boots).
+    if (emscripten_is_main_browser_thread()) {
+        fprintf(stderr, "OPFS skipped (main thread); data dir will not persist\n");
+        return;
+    }
+    backend_t opfs = wasmfs_create_opfs_backend();
+    if (!opfs) { fprintf(stderr, "OPFS backend unavailable; data dir will not persist\n"); return; }
+    int rc = wasmfs_create_directory("/boinc_data", 0777, opfs);
+    if (rc != 0) { fprintf(stderr, "OPFS mount at /boinc_data failed (%d)\n", rc); return; }
+    if (chdir("/boinc_data") != 0) { fprintf(stderr, "chdir /boinc_data failed\n"); return; }
+    // wasm default: accept unsigned project apps (no browser code-signing infra; apps come from the
+    // CORS-scoped project over HTTPS).
+    if (access("cc_config.xml", F_OK) != 0) {
+        FILE* f = fopen("cc_config.xml", "w");
+        if (f) {
+            fputs("<cc_config>\n<options>\n<unsigned_apps_ok>1</unsigned_apps_ok>\n</options>\n</cc_config>\n", f);
+            fclose(f);
+        }
+    }
+}
+
+// Phase 5 — WebGPU adapter naming (late fallback). The adapter is detected in preRun
+// (wasm/browser/webgpu_pre.js) and registered as the "webgpu" coproc at GPU-detection time
+// (client/gpu_detect.cpp COPROCS::get). requestAdapter() is async, so the vendor/arch NAME may not
+// be ready by then. If so, this fills host_info.webgpu_name once it arrives, for get_host_info.
+// Returns 1 and copies the name once it is available, else 0.
+EM_JS(int, wasm_webgpu_name, (char* buf, int len), {
+    if (Module.webgpuAdapter && Module.webgpuAdapter.present && Module.webgpuAdapter.name) {
+        stringToUTF8(Module.webgpuAdapter.name, buf, len);
+        return 1;
+    }
+    return 0;
+});
+
+// Once per main-loop iteration, until the name is set: if the "webgpu" coproc exists but its name
+// hasn't been reported yet, pick it up when requestAdapter() resolves and log it.
+static void wasm_webgpu_name_poll() {
+    static bool done = false;
+    if (done) return;
+    if (strlen(gstate.host_info.webgpu_name)) { done = true; return; }
+    if (rsc_index("webgpu") <= 0) { done = true; return; }   // no WebGPU coproc; nothing to name
+    char buf[256];
+    if (wasm_webgpu_name(buf, sizeof(buf))) {
+        safe_strcpy(gstate.host_info.webgpu_name, buf);
+        msg_printf(NULL, MSG_INFO, "WebGPU adapter: %s", buf);
+        done = true;
+    }
+}
+#endif
+
+// One iteration of the client poll loop. Returns false when the client should exit.
+// poll_dt is the do_io_or_sleep interval: POLL_INTERVAL natively; 0 in the browser, where
+// emscripten_set_main_loop controls the cadence and a blocking sleep isn't allowed.
+static bool boinc_main_loop_body(double poll_dt) {
+    if (!gstate.poll_slow_events()) {
+        gstate.do_io_or_sleep(poll_dt);
+    }
+    if (gstate.time_to_exit()) {
+        msg_printf(NULL, MSG_INFO, "Time to exit");
+        return false;
+    }
+    if (gstate.requested_exit) {
+        if (cc_config.abort_jobs_on_exit) {
+            if (!gstate.in_abort_sequence) {
+                msg_printf(NULL, MSG_INFO,
+                    "Exit requested; starting abort sequence"
+                );
+                gstate.start_abort_sequence();
+            }
+        } else {
+            msg_printf(NULL, MSG_INFO, "Exiting");
+            return false;
+        }
+    }
+    if (gstate.in_abort_sequence) {
+        if (gstate.abort_sequence_done()) {
+            msg_printf(NULL, MSG_INFO, "Abort sequence done; exiting");
+            return false;
+        }
+    }
+    gstate.check_overdue();
+    return true;
+}
+
+#ifdef WASM
+static void wasm_main_loop_iter() {
+    // Runs on the browser event loop. The web UI's GUI RPC calls land *between*
+    // iterations, so client state is never touched reentrantly.
+    boinc_gui_rpc_poll();   // deliver replies for the bridge's async HTTP ops
+    wasm_webgpu_name_poll();   // Phase 5: fill the WebGPU adapter name once requestAdapter resolves
+    // Reap the async CPU-benchmark Worker here rather than only in poll_slow_events(): that runs it
+    // late (after pollers that return early during busy attach/download), so the benchmark result
+    // could sit unreaped. cpu_benchmarks_poll() self-gates on benchmarks_running and is rate-limited.
+    gstate.cpu_benchmarks_poll();
+    if (!boinc_main_loop_body(0.0)) {
+        emscripten_cancel_main_loop();
+        finalize();
+    }
+}
+#endif
+
 int boinc_main_loop() {
     int retval;
 
@@ -433,43 +554,74 @@ int boinc_main_loop() {
 
     log_message_startup("Initialization completed");
 
-    // client main loop; poll interval is 1 sec
-    while (1) {
-        if (!gstate.poll_slow_events()) {
-            gstate.do_io_or_sleep(POLL_INTERVAL);
+#ifdef WASM
+    if (gstate.wasm_selftest) {
+        // Prove the browser GUI RPC seam headless: feed a few requests through the same string
+        // bridge the web UI will use, verify the replies + the SAB IPC round-trip, print a single
+        // machine-checkable verdict (WASM_SELFTEST: PASS/FAIL), and exit nonzero on failure so CI
+        // can gate on it. Runs only under --wasm_selftest; the real browser path is unaffected.
+        bool ok = true;
+        const char* reqs[] = {
+            "<boinc_gui_rpc_request>\n<get_host_info/>\n</boinc_gui_rpc_request>\n",
+            "<boinc_gui_rpc_request>\n<get_cc_status/>\n</boinc_gui_rpc_request>\n"
+        };
+        const char* expect[] = { "<host_info", "<cc_status" };
+        for (unsigned i=0; i<sizeof(reqs)/sizeof(reqs[0]); i++) {
+            char* reply = boinc_handle_gui_rpc(reqs[i]);
+            printf("=== WASM GUI RPC selftest: request %u ===\n%s\n", i, reply ? reply : "(null)");
+            if (!reply
+                || !strstr(reply, "</boinc_gui_rpc_reply>")
+                || !strstr(reply, expect[i])
+            ) ok = false;
+            free(reply);
         }
 
-        if (gstate.time_to_exit()) {
-            msg_printf(NULL, MSG_INFO, "Time to exit");
-            break;
+        // Phase 3a: SAB-backed APP_CLIENT_SHM round-trip (the real lib/app_ipc.cpp code path).
+        {
+            SHARED_MEM* shm = (SHARED_MEM*)malloc(sizeof(SHARED_MEM));
+            boinc_wasm_shm_setup(shm);
+            char out[MSG_CHANNEL_SIZE], out2[MSG_CHANNEL_SIZE];
+            printf("=== Phase 3a SAB IPC selftest ===\n");
+            bool s1 = shm->app_status.send_msg("<fraction_done>0.42</fraction_done>");
+            bool s2 = shm->app_status.send_msg("second");   // must fail: channel full
+            bool g1 = shm->app_status.get_msg(out);
+            bool empty = shm->app_status.get_msg(out2);     // must fail: now empty (keeps `out` intact)
+            shm->process_control_request.send_msg("<quit/>");
+            bool ctl_has = shm->process_control_request.has_msg();
+            shm->process_control_request.get_msg(out2);
+            bool ctl_after = shm->process_control_request.has_msg();
+            printf(" app_status: send=%d send-when-full=%d get=%d msg='%s' get-when-empty=%d\n",
+                s1, s2, g1, g1?out:"", empty);
+            printf(" control: has_msg=%d get='%s' has_after=%d\n", ctl_has, out2, ctl_after);
+            if (!(s1 && !s2 && g1 && !empty && ctl_has && !ctl_after
+                  && strcmp(out,  "<fraction_done>0.42</fraction_done>")==0
+                  && strcmp(out2, "<quit/>")==0)) ok = false;
+            free(shm);
         }
-        if (gstate.requested_exit) {
-            if (cc_config.abort_jobs_on_exit) {
-                if (!gstate.in_abort_sequence) {
-                    msg_printf(NULL, MSG_INFO,
-                        "Exit requested; starting abort sequence"
-                    );
-                    gstate.start_abort_sequence();
-                }
-            } else {
-                msg_printf(NULL, MSG_INFO, "Exiting");
-                break;
-            }
-        }
-        if (gstate.in_abort_sequence) {
-            if (gstate.abort_sequence_done()) {
-                msg_printf(NULL, MSG_INFO, "Abort sequence done; exiting");
-                break;
-            }
-        }
-        gstate.check_overdue();
+        printf("WASM_SELFTEST: %s\n", ok ? "PASS" : "FAIL");
+        fflush(stdout);
+        return ok ? 0 : 1;
     }
+#endif
 
+    // client main loop; poll interval is 1 sec
+#ifdef WASM
+    // Browser: drive the poll loop cooperatively through the event loop so the tab stays
+    // responsive and the web UI's GUI RPC calls run between iterations (see wasm/README.md).
+    emscripten_set_main_loop(wasm_main_loop_iter, 4, 1);   // 4 Hz; simulate_infinite_loop=1
+    return 0;   // not reached: emscripten unwinds the stack and keeps calling the iter
+#else
+    while (boinc_main_loop_body(POLL_INTERVAL)) {}
     return finalize();
+#endif
 }
 
 int main(int argc, char** argv) {
     int retval = 0;
+
+#ifdef WASM
+    wasm_mount_data_dir();   // OPFS-backed persistent data dir; must precede any data-dir access
+#endif
 
     coprocs.set_path_to_client(argv[0]);    // Used to launch a child process for --detect_gpus
 

@@ -206,6 +206,15 @@ void NET_STATUS::http_op_succeeded() {
 }
 
 void NET_STATUS::contact_reference_site() {
+#ifdef WASM
+    // No reference-site probe in a browser: the client can only reach the CORS-scoped project via
+    // emscripten_fetch, not arbitrary cross-origin URLs like the default berkeley.edu test site. The
+    // probe would always "fail" and falsely report "BOINC can't access Internet". Treat the network
+    // as available; a failed project fetch is the project's problem, not a missing connection.
+    need_to_contact_reference_site = false;
+    need_physical_connection = false;
+    return;
+#endif
     if (log_flags.network_status_debug) {
         msg_printf(0, MSG_INFO,
             "[network_status] need_phys_conn %d; trying %s",

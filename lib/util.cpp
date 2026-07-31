@@ -667,6 +667,14 @@ bool process_exists(HANDLE h) {
 // so just get the process's CPU time
 //
 int boinc_calling_thread_cpu_time(double &cpu_t) {
+#ifdef WASM
+    // wasm has no per-thread (or usable per-process) CPU time: getrusage() returns a constant stub,
+    // which would make the CPU benchmarks' "run until min_cpu_time" loop never terminate. Use
+    // wall-clock instead. The callers that time CPU work (the benchmarks) run in a dedicated Worker
+    // that only computes, so wall-clock ~= CPU time.
+    cpu_t = dtime();
+    return 0;
+#else
     struct rusage ru;
 
     int retval = getrusage(RUSAGE_SELF, &ru);
@@ -674,6 +682,7 @@ int boinc_calling_thread_cpu_time(double &cpu_t) {
     cpu_t = (double)ru.ru_utime.tv_sec + ((double)ru.ru_utime.tv_usec) / 1e6;
     cpu_t += (double)ru.ru_stime.tv_sec + ((double)ru.ru_stime.tv_usec) / 1e6;
     return 0;
+#endif
 }
 
 #ifndef _USING_FCGI_

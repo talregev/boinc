@@ -55,9 +55,13 @@ struct MSG_CHANNEL {
     char buf[MSG_CHANNEL_SIZE];
     bool get_msg(char*);
         // returns a message and clears pending flag
+#ifdef WASM
+    bool has_msg();     // routed to the shared SAB (see app_ipc.cpp)
+#else
     inline bool has_msg() {
         return buf[0]?true:false;
     }
+#endif
     bool send_msg(const char*);
         // if there is not a message in the segment,
         // writes specified message and sets pending flag
@@ -89,6 +93,15 @@ struct SHARED_MEM {
     MSG_CHANNEL trickle_down;
         // core->app
 };
+
+#ifdef WASM
+// Phase 3 (Option B): back APP_CLIENT_SHM with a SharedArrayBuffer (Module.boincShm) instead of
+// SysV shared memory, since the wasm client and each science app are separate wasm modules with
+// separate linear memories. Call once with the local SHARED_MEM used for channel-offset
+// arithmetic: on the client it creates the SAB; on an app Worker the SAB is already set from the
+// handle passed by the client, so this just records the base.
+extern void boinc_wasm_shm_setup(SHARED_MEM* base);
+#endif
 
 // MSG_QUEUE provides a queuing mechanism for shared-mem messages
 // (which don't have one otherwise)
