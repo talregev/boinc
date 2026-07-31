@@ -1,0 +1,18 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>BOINC wasm --wasm_selftest (GUI RPC + Phase 3a SAB IPC)</title>
+<style>body{font:13px ui-monospace,monospace;max-width:900px;margin:2rem auto;padding:0 1rem}
+pre{background:#111;color:#8f8;padding:1rem;border-radius:8px;white-space:pre-wrap}</style>
+<h1>--wasm_selftest</h1>
+<p>Runs the client's built-in selftest (GUI RPC string bridge + Phase 3a SAB-backed APP_CLIENT_SHM)
+   and streams stdout to the server.</p>
+<pre id="log">loading…</pre>
+<script>
+const $=document.getElementById('log'); $.textContent='';
+function rep(t){ const d=document.createElement('div'); d.textContent=t; $.appendChild(d);
+  try{ fetch('/report',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({tag:'selftest',text:String(t).slice(0,1000),when:new Date().toISOString()})});}catch(e){} }
+var Module = { arguments:['--wasm_selftest'], print: rep, printErr: rep, onAbort: w=>rep('abort: '+w) };
+const s=document.createElement('script'); s.src='boinc_client.js';
+s.onerror=()=>rep('failed to load boinc_client.js'); document.body.appendChild(s);
+</script>

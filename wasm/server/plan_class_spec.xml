@@ -1,0 +1,22 @@
+<!-- Plan-class spec for the wasm demo project. Dropping this file into the project dir makes the
+     scheduler use plan_class_spec (sched/plan_class_spec.cpp) for ALL non-empty plan classes; the
+     empty plan class (the CPU app version) is unaffected (sched_version.cpp only calls app_plan for
+     non-empty plan classes).
+
+     The "webgpu" class targets a generic, project-defined coproc type. It is NOT one of BOINC's
+     built-in GPU types (nvidia/amd/intel/apple), so the scheduler matches it generically via
+     COPROCS::lookup_type("webgpu") against the coproc the wasm client reports, and records it as a
+     custom coproc (host_usage.custom_coproc_type) so the reply carries a <coproc><type>webgpu</type>
+     requirement and the client schedules the task on the WebGPU device.
+
+     Note: NO <opencl/> flag — a WebGPU device is not an OpenCL device, and <opencl/> would force the
+     have_opencl / opencl_check rejection in plan_class_spec.cpp. gpu_type matching alone is enough. -->
+<plan_classes>
+    <plan_class>
+        <name>                  webgpu      </name>
+        <gpu_type>              webgpu      </gpu_type>
+        <gpu_ram_used_mb>       64          </gpu_ram_used_mb>
+        <gpu_peak_flops_scale>  1           </gpu_peak_flops_scale>
+        <cpu_frac>              .1          </cpu_frac>
+    </plan_class>
+</plan_classes>

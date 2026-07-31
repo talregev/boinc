@@ -1,0 +1,74 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Spike A — browser IPC (SharedArrayBuffer + Worker)</title>
+<style>
+  body { font: 14px/1.5 system-ui, sans-serif; max-width: 780px; margin: 2rem auto; padding: 0 1rem; }
+  h1 { font-size: 1.3rem; }
+  pre { background: #111; color: #6e6; padding: .8rem 1rem; border-radius: 8px; max-height: 340px; overflow-y: auto; }
+  .ok { color: #2a7; } .bad { color: #c33; } .muted { color: #888; }
+  @media (prefers-color-scheme: dark) { body { background:#181818; color:#ddd; } }
+</style>
+<h1>Spike A — client ⇄ app IPC over a SharedArrayBuffer</h1>
+<p class="muted">The same protocol proven headless in Node, now in a real browser: page = BOINC
+  client, Web Worker = science app, talking only through the emulated APP_CLIENT_SHM channels.
+  Must be served <b>cross-origin isolated</b> (see <code>serve.py</code>) or SharedArrayBuffer is unavailable.</p>
+<pre id="log">starting…</pre>
+
+<script src="shm.js"></script>
+<script>
+const { makeSAB, Shm } = window.SpikeShm;
+const $ = document.getElementById('log');
+const log = s => { $.textContent += '\n' + s; $.scrollTop = $.scrollHeight; };
+$.textContent = 'crossOriginIsolated = ' + self.crossOriginIsolated;
+
+if (typeof SharedArrayBuffer === 'undefined') {
+    log('<SharedArrayBuffer unavailable — serve with COOP/COEP headers (python3 serve.py)>');
+} else {
+    const sab = makeSAB(), shm = new Shm(sab);
+    const observed = [];
+    let checkpointRequested = false, quitSent = false, gotCheckpointAck = false, gotQuitAck = false, done = false;
+
+    const worker = new Worker('app-worker-browser.js');
+    worker.onmessage = (e) => { if (e.data.type === 'exited') finish(); else if (e.data.type === 'orphaned') fail('app orphaned'); };
+    worker.onerror = (e) => fail('worker error: ' + e.message);
+    worker.postMessage({ sab });
+
+    const hb = setInterval(() => shm.send('HEARTBEAT', '<heartbeat/>'), 100);
+    const poll = setInterval(() => {
+        let m, latest = null;
+        while ((m = shm.receive('APP_STATUS')) !== null) latest = m;
+        if (latest) {
+            const f = parseFloat((latest.match(/<fraction_done>([^<]+)</) || [])[1]);
+            if (!Number.isNaN(f)) {
+                observed.push(f); log('  fraction_done=' + f.toFixed(2));
+                if (f >= 0.5 && !checkpointRequested && shm.send('CONTROL_REQ', '<checkpoint/>')) { checkpointRequested = true; log('  -> requested checkpoint'); }
+                if (f >= 1.0 && checkpointRequested && !quitSent && shm.send('CONTROL_REQ', '<quit/>')) { quitSent = true; log('  -> sent quit'); }
+            }
+        }
+        let r; while ((r = shm.receive('CONTROL_REPLY')) !== null) {
+            if (r.includes('checkpoint')) { gotCheckpointAck = true; log('  <- checkpoint ack'); }
+            if (r.includes('quit')) { gotQuitAck = true; log('  <- quit ack'); }
+        }
+    }, 20);
+    const guard = setTimeout(() => fail('timed out'), 30000);
+    function stop() { clearInterval(hb); clearInterval(poll); clearTimeout(guard); }
+    function report(pass, note) {
+        try {
+            fetch('/report', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ spike: 'A', when: new Date().toISOString(), pass,
+                    updates: observed.length, peak: observed.length ? Math.max.apply(null, observed) : 0,
+                    checkpointAck: gotCheckpointAck, quitAck: gotQuitAck, note: note || '' }) });
+        } catch (e) {}
+    }
+    function fail(why) { if (done) return; done = true; stop(); log('\nSPIKE A: FAILED — ' + why); report(false, why); }
+    function finish() {
+        if (done) return; done = true; stop();
+        let r; while ((r = shm.receive('CONTROL_REPLY')) !== null) { if (r.includes('quit')) gotQuitAck = true; if (r.includes('checkpoint')) gotCheckpointAck = true; }
+        const mono = observed.every((v, i) => i === 0 || v >= observed[i - 1]);
+        const ok = observed.length >= 5 && mono && Math.max.apply(null, observed) >= 0.999 && gotCheckpointAck && gotQuitAck;
+        log('\n' + (ok ? 'SPIKE A: PASSED — SharedArrayBuffer carries the APP_CLIENT_SHM protocol in-browser'
+                       : 'SPIKE A: FAILED — updates=' + observed.length + ' mono=' + mono + ' ckpt=' + gotCheckpointAck + ' quit=' + gotQuitAck));
+        report(ok, ok ? '' : ('updates=' + observed.length + ' mono=' + mono));
+    }
+}
+</script>
