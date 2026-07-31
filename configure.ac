@@ -214,6 +214,12 @@ AC_ARG_ENABLE(apps-gui,
     [enable_apps_gui=${enableval}],
     [enable_apps_gui=no])
 
+AC_ARG_ENABLE(wasm,
+    AS_HELP_STRING([--enable-wasm],
+                   [enable building the boinc client as WebAssembly (via Emscripten)]),
+    [enable_wasm=${enableval}],
+    [enable_wasm=no])
+
 AC_ARG_ENABLE(unit-tests,
     AS_HELP_STRING([--enable-unit-tests],
                    [enable building the boinc unit tests]),
@@ -436,6 +442,11 @@ dnl doc/manpages, and set the conditional HAVE_DOCBOOK2X_MAN to build
 dnl the manpages only if docbook2x-man is available.
 AC_PATH_PROG(DOCBOOK2X_MAN, docbook2x-man)
 AM_CONDITIONAL(HAVE_DOCBOOK2X_MAN, [test -n "${DOCBOOK2X_MAN}"])
+
+dnl When building as WebAssembly, Emscripten emits <name>.js (+ .wasm) rather than a native binary.
+if test "${enable_wasm}" = yes ; then
+  EXEEXT=.js
+fi
 
 AC_SUBST([CLIENT_BIN_FILENAME],[boinc${EXEEXT}])
 AC_SUBST([CLIENT_CMD_BIN_FILENAME],[boinccmd${EXEEXT}])
@@ -813,7 +824,12 @@ AC_TYPE_SIGNAL
 if test "${isWIN32}" = "yes" ; then
   AC_CHECK_HEADERS(winsock2.h winsock.h windows.h ws2tcpip.h winternl.h crtdbg.h)
 fi
-AC_CHECK_HEADERS(sys/types.h sys/un.h arpa/inet.h dirent.h grp.h fcntl.h inttypes.h stdint.h memory.h netdb.h netinet/in.h netinet/tcp.h netinet/ether.h net/if.h net/if_arp.h signal.h strings.h sys/auxv.h sys/file.h sys/fcntl.h sys/ipc.h sys/ioctl.h sys/msg.h sys/param.h sys/resource.h sys/select.h sys/sem.h sys/shm.h sys/sockio.h sys/socket.h sys/stat.h sys/statvfs.h sys/statfs.h sys/systeminfo.h sys/time.h sys/types.h sys/utsname.h sys/vmmeter.h sys/wait.h unistd.h utmp.h errno.h procfs.h ieeefp.h setjmp.h float.h sal.h execinfo.h xlocale.h)
+AC_CHECK_HEADERS(sys/types.h sys/un.h arpa/inet.h dirent.h grp.h fcntl.h inttypes.h stdint.h memory.h netdb.h netinet/in.h netinet/tcp.h netinet/ether.h net/if.h net/if_arp.h signal.h strings.h sys/auxv.h sys/file.h sys/fcntl.h sys/ipc.h sys/ioctl.h sys/msg.h sys/param.h sys/resource.h sys/select.h sys/sem.h sys/sockio.h sys/socket.h sys/stat.h sys/statvfs.h sys/statfs.h sys/systeminfo.h sys/time.h sys/types.h sys/utsname.h sys/vmmeter.h sys/wait.h unistd.h utmp.h errno.h procfs.h ieeefp.h setjmp.h float.h sal.h execinfo.h xlocale.h)
+
+dnl Emscripten has no SysV shared memory; only probe sys/shm.h on native builds.
+if test "${enable_wasm}" != yes ; then
+  AC_CHECK_HEADERS(sys/shm.h)
+fi
 
 save_cxxflags="${CXXFLAGS}"
 save_cppflags="${CPPFLAGS}"
@@ -1230,6 +1246,11 @@ AM_CONDITIONAL(BUILD_APPS_WITH_VCPKG, [test "${enable_apps_vcpkg}" = yes])
 AM_CONDITIONAL(BUILD_WITH_VBOX, [test "${enable_apps_vbox}" = yes])
 AM_CONDITIONAL(BUILD_WITH_MINGW, [test "${enable_apps_mingw}" = yes])
 AM_CONDITIONAL(BUILD_WITH_GUI, [test "${enable_apps_gui}" = yes])
+
+AM_CONDITIONAL(BUILD_WITH_WASM, [test "${enable_wasm}" = yes])
+if test "${enable_wasm}" = yes ; then
+  AC_DEFINE([WASM], [1], [Building the BOINC client as WebAssembly via Emscripten])
+fi
 
 dnl Whether to build fcgi components
 AM_CONDITIONAL(ENABLE_FCGI,[test "${enable_fcgi}" = yes])

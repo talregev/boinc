@@ -1,0 +1,186 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Spike B — WebGPU GPU detect + compute</title>
+<style>
+  body { font: 14px/1.5 system-ui, sans-serif; max-width: 780px; margin: 2rem auto; padding: 0 1rem; }
+  h1 { font-size: 1.3rem; } h2 { font-size: 1rem; margin-top: 1.5rem; }
+  pre { background: #111; color: #d6e; padding: .8rem 1rem; border-radius: 8px; overflow-x: auto; white-space: pre-wrap; }
+  .ok { color: #2a7; } .bad { color: #c33; } .muted { color: #888; }
+  button { font: inherit; padding: .5rem 1rem; border-radius: 8px; border: 1px solid #888; cursor: pointer; }
+  @media (prefers-color-scheme: dark) { body { background:#181818; color:#ddd; } }
+</style>
+<h1>Spike B — WebGPU: detect the GPU and crunch on it</h1>
+<p class="muted">Open this in Chrome/Edge (WebGPU on by default) or Safari 26+. Firefox: enable
+  <code>dom.webgpu.enabled</code>. The GPU output must match the CPU checksum
+  <code>0x27a723a9</code> printed by <code>node oracle.js</code>.</p>
+<button id="run">Run</button>
+<h2>GPU adapter</h2><pre id="gpu">…</pre>
+<h2>Result</h2><pre id="out">click Run</pre>
+
+<script src="kernel.js"></script>
+<script>
+// WGSL kept in sync with compute.wgsl (inlined so the page works from file:// without fetch).
+const WGSL = `
+@group(0) @binding(0) var<storage, read>       inp    : array<u32>;
+@group(0) @binding(1) var<storage, read_write> outp   : array<u32>;
+@group(0) @binding(2) var<uniform>             params : vec2<u32>;
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) gid : vec3<u32>) {
+    let i = gid.x;
+    if (i >= params.x) { return; }
+    var x : u32 = inp[i];
+    let k : u32 = params.y;
+    for (var j : u32 = 0u; j < k; j = j + 1u) {
+        x = x ^ (x << 13u);
+        x = x ^ (x >> 17u);
+        x = x ^ (x << 5u);
+    }
+    outp[i] = x;
+}`;
+
+const N = 1 << 20, K = 256;
+const $gpu = document.getElementById('gpu'), $out = document.getElementById('out');
+
+async function main() {
+    $out.textContent = 'running…';
+    if (!navigator.gpu) { $gpu.innerHTML = '<span class="bad">navigator.gpu missing — no WebGPU in this browser</span>'; $out.textContent = ''; return; }
+
+    const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
+    if (!adapter) { $gpu.innerHTML = '<span class="bad">requestAdapter() returned null — no usable GPU</span>'; $out.textContent = ''; return; }
+
+    // ---- GPU detection: this is the "detect GPU" deliverable, maps to a future PROC_TYPE_WEBGPU_GPU ----
+    let info = {};
+    try { info = adapter.info || (adapter.requestAdapterInfo ? await adapter.requestAdapterInfo() : {}); } catch (e) {}
+    const L = adapter.limits;
+    $gpu.textContent =
+        `vendor       : ${info.vendor || '(hidden)'}\n` +
+        `architecture : ${info.architecture || '(hidden)'}\n` +
+        `device       : ${info.device || info.description || '(hidden)'}\n` +
+        `maxComputeInvocationsPerWorkgroup : ${L.maxComputeInvocationsPerWorkgroup}\n` +
+        `maxComputeWorkgroupSizeX          : ${L.maxComputeWorkgroupSizeX}\n` +
+        `maxStorageBufferBindingSize       : ${(L.maxStorageBufferBindingSize / 1048576).toFixed(0)} MiB`;
+
+    const device = await adapter.requestDevice();
+    device.addEventListener && device.addEventListener('uncapturederror', e => { $out.innerHTML = '<span class="bad">GPU error: ' + e.error.message + '</span>'; });
+
+    const input = SpikeKernel.makeInput(N);
+
+    const bytes = N * 4;
+    const inBuf  = device.createBuffer({ size: bytes, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+    const outBuf = device.createBuffer({ size: bytes, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC });
+    const rdBuf  = device.createBuffer({ size: bytes, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
+    const parBuf = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+    device.queue.writeBuffer(inBuf, 0, input);
+    device.queue.writeBuffer(parBuf, 0, new Uint32Array([N, K, 0, 0]));
+
+    const module = device.createShaderModule({ code: WGSL });
+    const pipeline = device.createComputePipeline({ layout: 'auto', compute: { module, entryPoint: 'main' } });
+    const bind = device.createBindGroup({
+        layout: pipeline.getBindGroupLayout(0),
+        entries: [
+            { binding: 0, resource: { buffer: inBuf } },
+            { binding: 1, resource: { buffer: outBuf } },
+            { binding: 2, resource: { buffer: parBuf } },
+        ],
+    });
+
+    function dispatch() {
+        const enc = device.createCommandEncoder();
+        const pass = enc.beginComputePass();
+        pass.setPipeline(pipeline); pass.setBindGroup(0, bind);
+        pass.dispatchWorkgroups(Math.ceil(N / 64));
+        pass.end();
+        device.queue.submit([enc.finish()]);
+    }
+
+    // warm up (first submit includes pipeline/shader compile), then time steady-state
+    dispatch(); await device.queue.onSubmittedWorkDone();
+    const REP = 20;
+    const g0 = performance.now();
+    for (let r = 0; r < REP; r++) dispatch();
+    await device.queue.onSubmittedWorkDone();
+    const gpuMs = (performance.now() - g0) / REP;
+
+    // read back one result set and checksum it
+    const enc = device.createCommandEncoder();
+    enc.copyBufferToBuffer(outBuf, 0, rdBuf, 0, bytes);
+    device.queue.submit([enc.finish()]);
+    await rdBuf.mapAsync(GPUMapMode.READ);
+    const gpuOut = new Uint32Array(rdBuf.getMappedRange().slice(0));
+    rdBuf.unmap();
+    const gpuSum = SpikeKernel.checksum(gpuOut);
+
+    // single-thread CPU reference (same machine)
+    const c0 = performance.now();
+    const cpuOut = new Uint32Array(N);
+    for (let i = 0; i < N; i++) cpuOut[i] = SpikeKernel.step(input[i], K);
+    const cpuMs = performance.now() - c0;
+    const cpuSum = SpikeKernel.checksum(cpuOut);
+
+    // all-cores CPU baseline (fair GPU comparison); null if not cross-origin isolated
+    const mt = await cpuParallel(input, K);
+
+    const hx = v => '0x' + (v >>> 0).toString(16).padStart(8, '0');
+    const rate = ms => (N * K / 1e6 / (ms / 1000)).toFixed(0);
+    const okGpu = gpuSum === cpuSum;
+    const okMt = mt ? mt.cksum === cpuSum : true;
+    let out =
+        `elements N   : ${N}\niterations K : ${K}  (${(N * K / 1e6).toFixed(0)}M kernel iterations)\n` +
+        `GPU          : ${gpuMs.toFixed(2)} ms  (${rate(gpuMs)} M iters/s)\n` +
+        `CPU  1 thread: ${cpuMs.toFixed(2)} ms  (${rate(cpuMs)} M iters/s)\n`;
+    out += mt
+        ? `CPU ${String(mt.P).padStart(2)} threads: ${mt.ms.toFixed(2)} ms  (${rate(mt.ms)} M iters/s)  <- fair baseline\n` +
+          `speedup      : ${(cpuMs / gpuMs).toFixed(1)}x vs 1 thread, ${(mt.ms / gpuMs).toFixed(1)}x vs ${mt.P} threads\n`
+        : `CPU threads  : (unavailable — page not cross-origin isolated)\n` +
+          `speedup      : ${(cpuMs / gpuMs).toFixed(1)}x vs 1 thread\n`;
+    out += `GPU checksum : ${hx(gpuSum)}\nCPU checksum : ${hx(cpuSum)}` + (mt ? `\nCPU-mt cksum : ${hx(mt.cksum)}` : '') + `\n`;
+    out += (okGpu && okMt)
+        ? '<span class="ok">SPIKE B: PASSED — GPU output matches CPU bit-for-bit</span>'
+        : '<span class="bad">SPIKE B: FAILED — ' + (!okGpu ? 'GPU != CPU' : 'CPU multi-thread != CPU') + '</span>';
+    $out.innerHTML = out;
+    const report = {
+        spike: 'B', when: new Date().toISOString(), pass: okGpu && okMt,
+        adapter: { vendor: info.vendor || null, architecture: info.architecture || null, device: info.device || info.description || null },
+        N, K, gpuMs, cpuMs, cpuThreads: mt ? mt.P : 0, cpuMtMs: mt ? mt.ms : null,
+        speedupVs1: cpuMs / gpuMs, speedupVsMt: mt ? mt.ms / gpuMs : null,
+        gpuSum: hx(gpuSum), cpuSum: hx(cpuSum), cpuMtSum: mt ? hx(mt.cksum) : null,
+    };
+    console.log('[Spike B]', report);
+    try { await fetch('/report', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(report) }); } catch (e) {}
+}
+
+// all-cores CPU baseline via Web Workers; returns {ms,cksum,P} or null if SharedArrayBuffer is off
+async function cpuParallel(input, K) {
+    if (typeof SharedArrayBuffer === 'undefined' || !self.crossOriginIsolated) return null;
+    const P = navigator.hardwareConcurrency || 4;
+    const sab = new SharedArrayBuffer(input.length * 4);
+    new Uint32Array(sab).set(input);
+    const chunk = Math.ceil(input.length / P);
+    const workers = [], ready = [];
+    for (let p = 0; p < P; p++) {
+        const w = new Worker('cpu-worker-browser.js');
+        workers.push(w);
+        ready.push(new Promise(res => {
+            const h = (e) => { if (e.data === 'ready') { w.removeEventListener('message', h); res(); } };
+            w.addEventListener('message', h);
+        }));
+    }
+    await Promise.all(ready);            // wait until all workers loaded, so timing excludes spawn cost
+    const results = workers.map(w => new Promise(res => { w.onmessage = (e) => res(e.data >>> 0); }));
+    const t0 = performance.now();
+    for (let p = 0; p < P; p++) {
+        const start = p * chunk, end = Math.min(input.length, start + chunk);
+        workers[p].postMessage({ sab, start, end, K });
+    }
+    const partials = await Promise.all(results);
+    const ms = performance.now() - t0;
+    workers.forEach(w => w.terminate());
+    const cksum = partials.reduce((a, b) => (a ^ b) >>> 0, 0) >>> 0;
+    return { ms, cksum, P };
+}
+
+document.getElementById('run').addEventListener('click', () => main().catch(e => {
+    $out.innerHTML = '<span class="bad">error: ' + (e && e.stack || e) + '</span>';
+}));
+main().catch(e => { $out.innerHTML = '<span class="bad">error: ' + (e && e.stack || e) + '</span>'; });
+</script>

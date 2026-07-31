@@ -762,8 +762,55 @@ void ACTIVE_TASK_SET::process_control_poll() {
 
 // See if any processes have exited
 //
+#ifdef WASM
+// defined in app_start.cpp (EM_JS has C linkage): terminate an app Worker, and reap one that
+// called boinc_finish() (returns its pid, 0 if none; writes the boinc_finish() status).
+extern "C" void wasm_kill_app(int pid);
+extern "C" int wasm_poll_finished(int* status_out);
+#endif
+
 bool ACTIVE_TASK_SET::check_app_exited() {
     bool found = false;
+
+#ifdef WASM
+    // Browser: an app can't exit a process the client can wait4() on. Instead a real libboinc_api
+    // app calls boinc_finish(), which bridges its output files into the slot dir (by open_name) and
+    // posts a completion record. Reap those here: copy each output file to its physical path, write
+    // the finish file, terminate the Worker, and let handle_exited_app() complete/upload the result.
+    int status = 0, wpid;
+    char slotpath[MAXPATHLEN], phys[MAXPATHLEN], path[MAXPATHLEN];
+    while ((wpid = wasm_poll_finished(&status)) > 0) {
+        ACTIVE_TASK* atp = lookup_pid(wpid);
+        if (!atp) { wasm_kill_app(wpid); continue; }   // popped a finish record but no task: terminate the orphan Worker
+        if (atp->result) {
+            for (const FILE_REF& fref: atp->result->output_files) {
+                if (!fref.file_info) continue;
+                // The app resolved its output by open_name (no slot->project link in the Worker),
+                // so it landed in the slot under that name; copy it to the physical output path.
+                const char* on = strlen(fref.open_name) ? fref.open_name : fref.file_info->name;
+                snprintf(slotpath, sizeof(slotpath), "%s/%s", atp->slot_dir, on);
+                get_pathname(fref.file_info, phys, sizeof(phys));
+                int retval = boinc_copy(slotpath, phys);
+                if (retval) {
+                    msg_printf(atp->wup ? atp->wup->project : NULL, MSG_INTERNAL_ERROR,
+                        "[task] output file %s missing in slot: %s", on, boincerror(retval)
+                    );
+                }
+            }
+        }
+        snprintf(path, sizeof(path), "%s/%s", atp->slot_dir, BOINC_FINISH_CALLED_FILE);
+        FILE* f = boinc_fopen(path, "w");
+        if (f) { fprintf(f, "%d\n", status); fclose(f); }
+
+        wasm_kill_app(wpid);
+        msg_printf(atp->wup ? atp->wup->project : NULL, MSG_INFO,
+            "[task] app called boinc_finish(%d); bridged output(s) + wrote finish file", status
+        );
+        atp->handle_exited_app(status ? (status << 8) : 0);
+        found = true;
+    }
+    return found;
+#endif
 
 #ifdef _WIN32
     unsigned long exit_code;

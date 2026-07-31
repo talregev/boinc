@@ -118,6 +118,46 @@ struct BENCHMARK_DESC {
 };
 
 static std::vector<BENCHMARK_DESC> benchmark_descs;
+
+#ifdef WASM
+#include <emscripten.h>
+// Run the CPU benchmark in a Web Worker — the browser analog of the native fork'd benchmark child.
+// The benchmark (wasm/benchmark, embedded at /benchmark.js + /benchmark.wasm) prints one
+// "BENCHMARK_RESULT ..." line, which the glue parses and postMessage()s back. Returns a handle (>0),
+// or -1 on failure. Non-blocking: the client's main loop polls wasm_poll_benchmark().
+EM_JS(int, wasm_spawn_benchmark, (), {
+    try {
+        var jsUrl = URL.createObjectURL(new Blob([FS.readFile('/benchmark.js')], {type:'text/javascript'}));
+        var wasmUrl = URL.createObjectURL(new Blob([FS.readFile('/benchmark.wasm')], {type:'application/wasm'}));
+        var glue =
+            "var Module={\n" +
+            "  locateFile:function(p){ return p.slice(-5)==='.wasm' ? '" + wasmUrl + "' : p; },\n" +
+            "  print:function(t){ var m=/BENCHMARK_RESULT fpops=([-0-9.eE+]+) iops=([-0-9.eE+]+) membw=([-0-9.eE+]+)/.exec(t);\n" +
+            "     if (m) postMessage({fpops:+m[1], iops:+m[2], membw:+m[3]}); },\n" +
+            "  printErr:function(t){},\n" +
+            "};\n" +
+            "importScripts('" + jsUrl + "');\n";
+        var w = new Worker(URL.createObjectURL(new Blob([glue], {type:'text/javascript'})));
+        var id = 1 + (Module.boincBmSeq = (Module.boincBmSeq||0) + 1);
+        Module.boincBm = Module.boincBm || {};
+        Module.boincBm[id] = null;
+        w.onmessage = function(e){ if (e.data && 'fpops' in e.data) { Module.boincBm[id] = e.data; w.terminate(); } };
+        w.onerror = function(e){ console.error('[benchmark] worker error:', e.message); Module.boincBm[id] = {fpops:0,iops:0,membw:0}; };
+        return id;
+    } catch (e) { console.error('wasm_spawn_benchmark failed:', e); return -1; }
+});
+// Poll a benchmark Worker: returns 1 and writes [fpops,iops,membw] into out (a double[3]) when the
+// result has arrived, else 0.
+EM_JS(int, wasm_poll_benchmark, (int id, double* out), {
+    var r = Module.boincBm && Module.boincBm[id];
+    if (!r) return 0;
+    HEAPF64[(out>>3)+0] = r.fpops||0;
+    HEAPF64[(out>>3)+1] = r.iops||0;
+    HEAPF64[(out>>3)+2] = r.membw||0;
+    delete Module.boincBm[id];
+    return 1;
+});
+#endif
 static double cpu_benchmarks_start;
 static int bm_ncpus;
     // user might change ncpus during benchmarks.
@@ -265,6 +305,10 @@ void CLIENT_STATE::start_cpu_benchmarks(bool force) {
     benchmark_descs.resize(n_usable_cpus);
 
     bm_ncpus = n_usable_cpus;
+#ifdef WASM
+    // One benchmark Worker measures per-core speed; avoid spawning N Workers in the browser.
+    bm_ncpus = 1;
+#endif
     benchmarks_running = true;
 
     for (i=0; i<bm_ncpus; i++) {
@@ -280,6 +324,10 @@ void CLIENT_STATE::start_cpu_benchmarks(bool force) {
         int j = (i >= n/2)? 2*i+1-n : 2*i;
         SetThreadAffinityMask(benchmark_descs[i].handle, 1ull<<j);
         SetThreadPriority(benchmark_descs[i].handle, THREAD_PRIORITY_IDLE);
+#elif defined(WASM)
+        // Browser: no fork/exec. Run the benchmark in a Web Worker (async, non-blocking); the main
+        // loop reaps it in check_benchmark() via wasm_poll_benchmark().
+        benchmark_descs[i].pid = wasm_spawn_benchmark();
 #else
         sprintf(benchmark_descs[i].filename, "%s_%d.xml", CPU_BENCHMARKS_FILE_NAME, i);
         PROCESS_ID pid = fork();
@@ -344,6 +392,22 @@ void abort_benchmark(BENCHMARK_DESC& desc) {
 // check a running benchmark thread/process.
 //
 void check_benchmark(BENCHMARK_DESC& desc) {
+#ifdef WASM
+    // Reap the benchmark Worker: when it has posted its result, record it in host_info (the same
+    // fields parse_cpu_benchmarks() would set natively).
+    double res[3];
+    if (wasm_poll_benchmark(desc.pid, res)) {
+        desc.done = true;
+        if (res[0] > 0) {
+            desc.host_info.p_fpops = res[0];
+            desc.host_info.p_iops = res[1];
+            desc.host_info.p_membw = res[2];
+        } else {
+            desc.error = true;
+        }
+    }
+    return;
+#endif
 #ifdef _WIN32
     DWORD exit_code = 0;
     GetExitCodeThread(desc.handle, &exit_code);
@@ -406,6 +470,9 @@ bool CLIENT_STATE::cpu_benchmarks_poll() {
 
     // do transitions through benchmark states
     //
+    // On wasm the benchmark runs whole in a Web Worker (no file-driven FP/INT phasing), so skip this
+    // ~30s state machine and fall straight through to reaping the Worker's result below.
+#ifndef WASM
     switch (bm_state) {
     case BM_FP_INIT:
         if (now - cpu_benchmarks_start > FP_START) {
@@ -462,6 +529,7 @@ bool CLIENT_STATE::cpu_benchmarks_poll() {
         }
         return false;
     }
+#endif
 
     // check for timeout
     //

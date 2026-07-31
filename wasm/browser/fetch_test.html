@@ -1,0 +1,17 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Phase 2d.2 — emscripten_fetch de-risk</title>
+<style>body{font:14px ui-monospace,monospace;max-width:800px;margin:2rem auto;padding:0 1rem}
+pre{background:#111;color:#8f8;padding:1rem;border-radius:8px;white-space:pre-wrap}</style>
+<h1>emscripten_fetch de-risk</h1>
+<p>Proves the wasm module can do a real browser HTTP GET (the transport HTTP_OP will use).</p>
+<pre id="log">loading…</pre>
+<script>
+const $ = document.getElementById('log'); $.textContent = '';
+function rep(t){ const d=document.createElement('div'); d.textContent=t; $.appendChild(d);
+  try{ fetch('/report',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({tag:'fetch-derisk',text:String(t).slice(0,500),when:new Date().toISOString()})});}catch(e){} }
+var Module = { print: rep, printErr: rep, onAbort: w=>rep('abort: '+w) };
+const s=document.createElement('script'); s.src='fetch_test.js';
+s.onerror=()=>rep('failed to load fetch_test.js'); document.body.appendChild(s);
+</script>

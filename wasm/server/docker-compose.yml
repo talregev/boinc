@@ -1,0 +1,73 @@
+# WASM BOINC demo server — a real BOINC project (MySQL + Apache + daemons) that serves the wasm
+# client and a wasm science app, so a browser can run real BOINC work end-to-end.
+#
+# Build the client + app first, then bring it up:
+#     wasm/ci_configure_client.sh && wasm/ci_make.sh    # client/boinc_client.{js,wasm}
+#     wasm/sample_app/build_app.sh                        # wasm/sample_app/app.{js,wasm}
+#     cd wasm/server && docker compose up --build -d
+# Then open  http://127.0.0.1/wasm/  in a WebGPU-capable browser.
+name: boinc-wasm-server
+
+volumes:
+  mysql:
+  project:
+  results:
+  secrets:
+
+services:
+  mysql:
+    image: boinc/server_mysql:latest-defaultargs
+    volumes:
+      - "mysql:/var/lib/mysql"
+
+  # One-shot: creates the BOINC project (DB + project dir) into the shared volume, then exits.
+  # Idempotent: skips if the project already exists, so a repeated `docker compose up` (without a
+  # `down -v`) doesn't fail trying to recreate it.
+  makeproject:
+    image: boinc/server_makeproject:latest-defaultargs
+    depends_on:
+      - mysql
+    volumes:
+      - "project:/home/boincadm/project.dst"
+      - "secrets:/run/secrets"
+    hostname: makeproject
+    restart: "no"
+    command:
+      - /bin/sh
+      - -c
+      - 'test -f /home/boincadm/project.dst/config.xml && echo "makeproject: project already exists, skipping" || makeproject-step2.sh'
+    environment:
+      - URL_BASE=http://127.0.0.1
+      - PROJECT=boincserver
+
+  # The project web server + BOINC daemons, extended (see Dockerfile) to serve the wasm client at
+  # /wasm and register the wasm app at startup. NB: no /dev/null code_sign_private mount here, so the
+  # registration script can generate a real signing key.
+  apache:
+    build:
+      context: ../..
+      dockerfile: wasm/server/Dockerfile
+      args:
+        - TAG=
+        - BOINC_USER=boincadm
+        - PROJECT_ROOT=/home/boincadm/project
+    image: boinc-wasm-server-apache
+    hostname: boincserver
+    depends_on:
+      mysql:
+        condition: service_started
+      makeproject:
+        condition: service_completed_successfully
+    volumes:
+      - "project:/home/boincadm/project"
+      - "results:/results"
+      - "secrets:/run/secrets"
+      # the apache image's startup (makeproject-step3) waits for the Docker socket (the base image is
+      # boinc2docker-capable); we don't use boinc2docker, but the mount unblocks startup.
+      - "/var/run/docker.sock:/var/run/docker.sock"
+    ports:
+      - "80:80"
+    tty: true
+    environment:
+      - URL_BASE=http://127.0.0.1
+      - PROJECT=boincserver

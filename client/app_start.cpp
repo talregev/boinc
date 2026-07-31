@@ -429,6 +429,18 @@ int ACTIVE_TASK::setup_file(
         return 0;
     }
 
+#ifdef WASM
+    // The app runs in a Web Worker with its own MEMFS and no project dir, so a "../../" soft link
+    // can't be resolved there. Copy input file content into the slot instead; wasm_spawn_app()
+    // bridges the slot files into the Worker, where boinc_resolve_filename() returns them as-is.
+    // (Output files need no link: the app writes them by open_name and boinc_finish() bridges back.)
+    if (input) {
+        retval = boinc_copy(file_path, link_path);
+        if (retval) return retval;
+    }
+    return 0;
+#endif
+
 #ifdef _WIN32
     retval = make_soft_link(project, link_path, rel_file_path);
     if (retval) return retval;
@@ -613,6 +625,82 @@ int ACTIVE_TASK::setup_slot_dir(char *buf, unsigned int buf_len) {
 // Current dir is top-level BOINC dir
 //
 // postcondition:
+#ifdef WASM
+#include <emscripten.h>
+// Phase 3b: launch a science app in the browser. There is no fork/exec, so spawn a Web Worker
+// that runs the downloaded app wasm module (main .js + companion .wasm, both read from the client
+// FS) and hand it the SharedArrayBuffer (Module.boincShm) that backs APP_CLIENT_SHM. The app talks
+// to the client purely over that SAB (Phase 3a). Returns a synthetic pid, or -1 on failure.
+EM_JS(int, wasm_spawn_app, (const char* js_path, const char* wasm_path, const char* slot_dir), {
+    try {
+        var slot = UTF8ToString(slot_dir);
+        var jp = UTF8ToString(js_path);
+        var wp = UTF8ToString(wasm_path);
+        var jsBytes = FS.readFile(jp);
+        var wasmUrl = wp ? URL.createObjectURL(new Blob([FS.readFile(wp)], {type:'application/wasm'})) : '';
+        var jsUrl = URL.createObjectURL(new Blob([jsBytes], {type:'text/javascript'}));
+        // Slot input bridge: copy the files the client staged in the slot dir (init_data.xml +
+        // input files, real content — see setup_file()) into the Worker's MEMFS so a real
+        // libboinc_api app's boinc_init()/boinc_resolve_filename() find them. Skip the app's own
+        // .js/.wasm (already loaded via the Blob URLs above).
+        var appJs = jp.split('/').pop(), appWasm = wp ? wp.split('/').pop() : '';
+        var slotFiles = {};
+        try { FS.readdir(slot).forEach(function(n){
+            if (n==='.'||n==='..'||n===appJs||n===appWasm) return;
+            try { if (FS.isFile(FS.stat(slot+'/'+n).mode)) slotFiles[n] = FS.readFile(slot+'/'+n); } catch(_){}
+        }); } catch(_){}
+        // Worker glue: receive the SAB + slot files, write the slot files into MEMFS, point the
+        // app's .wasm at its Blob URL, and run it. On boinc_finish() the app (api/boinc_api.cpp)
+        // posts {boincFinish, files}; we stash the output files + status for check_app_exited().
+        var glue =
+            "var g_sab=null, g_slot={};\n" +
+            "onmessage=function(e){ if(e.data&&e.data.boincShm){ g_sab=e.data.boincShm; g_slot=e.data.slotFiles||{}; if(Module.onShm)Module.onShm(); } };\n" +
+            "var Module={\n" +
+            "  locateFile:function(p){ return p.slice(-5)==='.wasm' ? '" + wasmUrl + "' : p; },\n" +
+            "  print:function(t){ postMessage({log:t}); },\n" +
+            "  printErr:function(t){ postMessage({log:t}); },\n" +
+            "  preRun:[function(){ function go(){ Module.boincShm=new Uint8Array(g_sab);\n" +
+            "       for(var n in g_slot){ try{ FS.writeFile(n, g_slot[n]); }catch(_){} } }\n" +
+            "     if(g_sab){go();return;} addRunDependency('shm'); Module.onShm=function(){go(); removeRunDependency('shm');}; }],\n" +
+            "};\n" +
+            "importScripts('" + jsUrl + "');\n";
+        var w = new Worker(URL.createObjectURL(new Blob([glue], {type:'text/javascript'})));
+        var pid = 1000 + (Module.boincAppWorkerSeq = (Module.boincAppWorkerSeq||0) + 1);
+        w.onmessage = function(e){
+            if (e.data.log) console.log('[boinc-app pid ' + pid + ']', e.data.log);
+            if ('boincFinish' in e.data) {   // app called boinc_finish(): stash outputs + status
+                for (var n in e.data.files) {   // the app's output files -> the client's slot dir
+                    try { FS.writeFile(slot + '/' + n, e.data.files[n]); }
+                    catch (err) { console.error('[boinc-app] slot write failed:', n, err); }
+                }
+                Module.boincFinished = Module.boincFinished || [];
+                Module.boincFinished.push({ pid: pid, status: e.data.boincFinish|0 });
+            }
+        };
+        w.onerror = function(e){ console.error('[boinc-app pid ' + pid + '] worker error:', e.message); };
+        w.postMessage({ boincShm: Module.boincShm.buffer, slotFiles: slotFiles });
+        Module.boincAppWorkers = Module.boincAppWorkers || {};
+        Module.boincAppWorkers[pid] = w;
+        return pid;
+    } catch (e) {
+        console.error('wasm_spawn_app failed:', e);
+        return -1;
+    }
+});
+// terminate a spawned app Worker (used on task completion/abort)
+EM_JS(void, wasm_kill_app, (int pid), {
+    var w = Module.boincAppWorkers && Module.boincAppWorkers[pid];
+    if (w) { w.terminate(); delete Module.boincAppWorkers[pid]; }
+});
+// reap a completed app: returns its pid (0 if none) and writes its boinc_finish() status.
+EM_JS(int, wasm_poll_finished, (int* status_out), {
+    if (!Module.boincFinished || !Module.boincFinished.length) return 0;
+    var e = Module.boincFinished.shift();
+    if (status_out) HEAP32[status_out>>2] = e.status|0;
+    return e.pid;
+});
+#endif  // WASM
+
 // If any error occurs
 //   ACTIVE_TASK::task_state is PROCESS_COULDNT_START
 //   report_result_error() is called
@@ -725,6 +813,38 @@ int ACTIVE_TASK::start() {
         msg_printf(0, MSG_INFO, "about to start a job; exiting");
         exit(0);
     }
+
+#ifdef WASM
+    // Browser: no fork/exec. Back APP_CLIENT_SHM with a SharedArrayBuffer and spawn the app
+    // as a Web Worker (main .js + companion .wasm), handing it that SAB.
+    if (!app_client_shm.shm) {
+        app_client_shm.shm = (SHARED_MEM*)malloc(sizeof(SHARED_MEM));
+        boinc_wasm_shm_setup(app_client_shm.shm);
+    }
+    app_client_shm.reset_msgs();
+    {
+        char wasm_path[MAXPATHLEN];
+        wasm_path[0] = 0;
+        for (const FILE_REF &fref: app_version->app_files) {
+            if (fref.file_info && strstr(fref.file_info->name, ".wasm")) {
+                get_pathname(fref.file_info, wasm_path, sizeof(wasm_path));
+                break;
+            }
+        }
+        int wpid = wasm_spawn_app(exec_path, wasm_path, slot_dir);
+        if (wpid < 0) {
+            safe_strcpy(buf, "wasm_spawn_app() failed");
+            retval = ERR_EXEC;
+            goto error;
+        }
+        pid = wpid;
+        set_task_state(PROCESS_EXECUTING, "start");
+        msg_printf(wup->project, MSG_INFO,
+            "[task] started %s as a Web Worker (pid %d)", exec_name, pid
+        );
+        return 0;
+    }
+#endif
 
 #ifdef _WIN32
     PROCESS_INFORMATION process_info;

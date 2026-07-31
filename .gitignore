@@ -231,6 +231,29 @@ vda/vdad
 build/
 build-*/
 
+# WASM
+*.wasm
+a.out.js
+boinc.js
+boinc_client.js
+boinccmd.js
+switcher.js
+wasm/browser/fetch_test.js
+wasm/sample_app/app.js
+wasm/gpu_app/app.js
+wasm/gpu_app/app_gpu.js
+wasm/benchmark/benchmark.js
+wasm/spikes/spikeC-worker-opfs/spike.js
+# runtime output from the browser harness / spike dev servers (serve.py -> /report)
+runs.jsonl
+result.json
+boinc.html
+boinc_client.html
+boinccmd.html
+switcher.html
+# WASM toolchain + deps (emsdk, vcpkg) fetched by wasm/*.sh — never commit these
+3rdParty/wasm/
+
 # snap
 parts/
 prime/
@@ -241,3 +264,4 @@ stage/
 # vim temporary files
 *.swp
 
+wasm/sample_app/uploaded_output.txt

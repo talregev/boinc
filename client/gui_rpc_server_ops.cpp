@@ -2009,6 +2009,49 @@ void GUI_RPC_CONN::handle_get() {
 
 // return nonzero only if we need to close the connection
 //
+// Run auth + dispatch for the request currently in request_msg, building the
+// <boinc_gui_rpc_reply>...</boinc_gui_rpc_reply> reply into mout. This is the
+// transport-independent core of the GUI RPC server: handle_rpc() calls it after
+// reading from the socket, and (on WASM) boinc_handle_gui_rpc() calls it with a
+// request string, so both paths reuse every RPC handler unchanged.
+//
+int GUI_RPC_CONN::do_rpc(bool http_request) {
+    int retval = 0;
+
+    mfout.printf("<boinc_gui_rpc_reply>\n");
+    if (match_req(request_msg, "auth1")) {
+        if (got_auth1 && auth_needed) {
+            retval = ERR_AUTHENTICATOR;
+        } else {
+            handle_auth1(mfout);
+            got_auth1 = true;
+        }
+    } else if (match_req(request_msg, "auth2")) {
+        if ((!got_auth1 || got_auth2) && auth_needed) {
+            retval = ERR_AUTHENTICATOR;
+        } else {
+            retval = handle_auth2(request_msg, mfout);
+            got_auth2 = true;
+        }
+    } else if (match_req(request_msg, "get_auth_id")) {
+        handle_get_auth_id(mfout);
+    } else if (auth_needed && !is_local) {
+        auth_failure(mfout);
+        if (sent_unauthorized) {
+            retval = ERR_AUTHENTICATOR;
+        }
+        sent_unauthorized = true;
+    } else {
+        retval = handle_rpc_aux(*this);
+    }
+
+    mfout.printf("</boinc_gui_rpc_reply>\n");
+    if (!http_request) {
+        mfout.printf("\003");   // delimiter for non-HTTP replies
+    }
+    return retval;
+}
+
 int GUI_RPC_CONN::handle_rpc() {
     int retval=0;
     char* p;
@@ -2091,40 +2134,12 @@ int GUI_RPC_CONN::handle_rpc() {
     // Policy:
     // - the first auth failure gets an error message; after that, disconnect
     // - if we get an unexpected auth1 or auth2, disconnect
-
-    mfout.printf("<boinc_gui_rpc_reply>\n");
-    if (match_req(request_msg, "auth1")) {
-        if (got_auth1 && auth_needed) {
-            retval = ERR_AUTHENTICATOR;
-        } else {
-            handle_auth1(mfout);
-            got_auth1 = true;
-        }
-    } else if (match_req(request_msg, "auth2")) {
-        if ((!got_auth1 || got_auth2) && auth_needed) {
-            retval = ERR_AUTHENTICATOR;
-        } else {
-            retval = handle_auth2(request_msg, mfout);
-            got_auth2 = true;
-        }
-    } else if (match_req(request_msg, "get_auth_id")) {
-        handle_get_auth_id(mfout);
-    } else if (auth_needed && !is_local) {
-        auth_failure(mfout);
-        if (sent_unauthorized) {
-            retval = ERR_AUTHENTICATOR;
-        }
-        sent_unauthorized = true;
-    } else {
-        retval = handle_rpc_aux(*this);
-    }
+    //
+    // auth + dispatch + reply framing is shared with the WASM string bridge:
+    retval = do_rpc(http_request);
 
 #define XML_HEADER "<?xml version=\"1.0\" encoding=\"ISO-8859-1\" ?>\n"
 
-    mfout.printf("</boinc_gui_rpc_reply>\n");
-    if (!http_request) {
-        mfout.printf("\003");   // delimiter for non-HTTP replies
-    }
     int n;
     mout.get_buf(p, n);
     if (http_request) {
@@ -2161,3 +2176,53 @@ int GUI_RPC_CONN::handle_rpc() {
     }
     return retval;
 }
+
+#ifdef WASM
+#include <emscripten.h>
+// Browser GUI RPC bridge (Phase 2): run one GUI RPC request from a string through the
+// normal server dispatch and return the reply string — with no socket. The in-page web UI
+// drives this via postMessage / ccall; the client and UI share the browser, so this
+// replaces the TCP GUI RPC transport while keeping the wire protocol byte-identical to
+// native (boinccmd/boincmgr). The returned buffer is malloc'd; the JS glue frees it.
+//
+// The bridge connection is a standalone GUI_RPC_CONN (not in the managed gui_rpcs set),
+// so the main loop must poll its async ops (get_project_config, account lookup, etc., which
+// run on conn.gui_http) explicitly — see boinc_gui_rpc_poll(), called from the wasm main loop.
+static GUI_RPC_CONN* wasm_bridge_conn = NULL;
+static GUI_RPC_CONN& wasm_get_bridge_conn() {
+    if (!wasm_bridge_conn) wasm_bridge_conn = new GUI_RPC_CONN(-1);  // lazy: avoid static-init order
+    return *wasm_bridge_conn;
+}
+
+// Pump the bridge connection's async HTTP ops. Called every iteration from the wasm main loop.
+extern "C" void boinc_gui_rpc_poll() {
+    if (wasm_bridge_conn) wasm_bridge_conn->gui_http.poll();
+}
+
+extern "C" EMSCRIPTEN_KEEPALIVE
+char* boinc_handle_gui_rpc(const char* req) {
+    GUI_RPC_CONN& conn = wasm_get_bridge_conn();   // one persistent local connection for the session
+
+    // Auth: the browser client and its web UI share one origin/sandbox, so this bridge is
+    // inherently a *local* connection and needs no authenticator (mirrors is_local on the
+    // native TCP path). NOTE: if an external transport (e.g. a WebSocket relay) is ever
+    // added, it MUST NOT reuse this path unauthenticated — enforce the gui_rpc password there.
+    conn.is_local = true;
+    conn.auth_needed = false;
+
+    conn.request_nbytes = 0;
+    safe_strcpy(conn.request_msg, req ? req : "");
+    char* term = strchr(conn.request_msg, 3);   // tolerate a caller that included \003 framing
+    if (term) *term = 0;
+
+    // http_request=true omits the native \003 stream delimiter: postMessage/ccall replies are
+    // already message-framed, so the reply is a clean, standalone XML string.
+    conn.do_rpc(true);
+
+    char* p = 0;
+    int n = 0;
+    conn.mout.get_buf(p, n);        // malloc'd reply; OWNERSHIP TRANSFERS TO THE CALLER — the JS
+                                    // glue must _free(ptr) after reading it (see wasm/browser/).
+    return p ? p : strdup("");
+}
+#endif

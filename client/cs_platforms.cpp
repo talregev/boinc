@@ -174,6 +174,14 @@ int launch_child_process_to_detect_emulated_cpu() {
 //
 void CLIENT_STATE::detect_platforms() {
 
+#ifdef WASM
+    // The browser build reports a dedicated platform instead of reusing the native build's HOSTTYPE
+    // (which resolves to i686-pc-linux-gnu because emconfigure keeps the host machine's triple).
+    // Projects register app versions under this platform for the wasm client.
+    add_platform("wasm32-unknown-emscripten");
+    return;
+#endif
+
 #if defined(_WIN32) && !defined(__CYGWIN32__)
 #if defined(_ARM64_)
     add_platform("windows_arm64");

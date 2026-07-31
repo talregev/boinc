@@ -283,6 +283,11 @@ struct CLIENT_STATE {
     int report_result_error(RESULT&, const char* err_msg);
     int reset_project(PROJECT*, bool detaching);
     bool no_gui_rpc;
+#ifdef WASM
+    bool wasm_selftest;
+        // --wasm_selftest: after init, run a few GUI RPCs through the string bridge
+        // (boinc_handle_gui_rpc) and exit; proves the browser RPC seam headless.
+#endif
     bool gui_rpc_unix_domain;
         // do GUI RPC over Unix-domain sockets rather than TCP
     void start_abort_sequence();

@@ -1,0 +1,9 @@
+<!doctype html><meta charset=utf-8><title>Spike C — WasmFS/OPFS in worker</title>
+<h1>Spike C: WasmFS + OPFS + pthread + nested Worker + FETCH + WebGPU</h1>
+<p>crossOriginIsolated = <b><script>document.write(self.crossOriginIsolated)</script></b></p>
+<pre id=log>running… (main runs on a pthread via PROXY_TO_PTHREAD; result POSTed to /report)</pre>
+<script>
+  var Module = { print: t => { document.getElementById('log').textContent += "\n"+t; },
+                 printErr: t => { document.getElementById('log').textContent += "\n[err] "+t; } };
+</script>
+<script src="spike.js"></script>

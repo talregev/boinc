@@ -86,6 +86,9 @@ public:
     GUI_RPC_CONN(int);
     ~GUI_RPC_CONN();
     int handle_rpc();
+    int do_rpc(bool http_request);
+        // run auth + dispatch for the request in request_msg, building the reply
+        // into mout; shared by the socket path and (on WASM) the string bridge
     void handle_auth1(MIOFILE&);
     int handle_auth2(char*, MIOFILE&);
     void http_error(const char* msg);

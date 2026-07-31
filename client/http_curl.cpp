@@ -257,6 +257,11 @@ HTTP_OP::HTTP_OP() {
     lSeek = 0;
     xfer_speed = 0;
     is_background = false;
+#ifdef WASM
+    wasmFetch = NULL;
+    wasmReqBody = NULL;
+    wasmFetchDone = false;
+#endif
     reset();
 }
 
@@ -401,6 +406,97 @@ static int set_cloexec(void*, curl_socket_t fd, curlsocktype purpose) {
 // On success, we'll call handle_messages() in response
 // to select() on the socket, and eventually close the files there.
 //
+#ifdef WASM
+#include <emscripten/fetch.h>
+
+// Phase 2d: browser HTTP transport for HTTP_OP using the Emscripten Fetch API. libcurl's
+// sockets can't reach a server from inside a browser, so on the wasm build we issue the
+// request with emscripten_fetch (real browser HTTP, subject to CORS). The transfer is async;
+// the callback flags completion and HTTP_OP_SET::got_select finishes the op — the same
+// state-machine shape as the curl path, so scheduler_op/file_xfer need no changes.
+
+static void wasm_fetch_onload(emscripten_fetch_t* f) {
+    // Runs on the browser event loop between poll iterations. Just flag completion;
+    // got_select() reads the result and drives the state machine (no reentrancy).
+    HTTP_OP* hop = (HTTP_OP*)f->userData;
+    if (hop) hop->wasmFetchDone = true;
+}
+
+int HTTP_OP::wasm_fetch_exec(
+    const char* url, const char* in, const char* out, double offset, bool is_post
+) {
+    static int outfile_seqno = 0;
+    if (in) safe_strcpy(infile, in);
+    if (out) {
+        bTempOutfile = false;
+        safe_strcpy(outfile, out);
+    } else {
+        bTempOutfile = true;
+        snprintf(outfile, sizeof(outfile), "http_temp_%d", outfile_seqno++);
+    }
+    string_substitute(url, m_url, sizeof(m_url), " ", "%20");
+
+    // Build the POST body: the req1 string, then the infile contents (from offset).
+    // (GET has no body.) The buffer must outlive the async fetch, so keep it in wasmReqBody.
+    wasmReqBody = NULL;
+    size_t body_len = 0;
+    if (is_post) {
+        want_upload = true; want_download = false;
+        size_t r1 = (req1 ? strlen(req1) : 0);
+        char* fbuf = NULL; size_t flen = 0;
+        if (strlen(infile) > 0) {
+            FILE* fp = boinc_fopen(infile, "rb");
+            if (fp) {
+                fseek(fp, 0, SEEK_END);
+                long sz = ftell(fp);
+                long start = (offset > 0) ? (long)offset : 0;
+                if (sz > start) {
+                    flen = (size_t)(sz - start);
+                    fbuf = (char*)malloc(flen);
+                    fseek(fp, start, SEEK_SET);
+                    flen = fread(fbuf, 1, flen, fp);
+                }
+                fclose(fp);
+            }
+        }
+        body_len = r1 + flen;
+        wasmReqBody = (char*)malloc(body_len ? body_len : 1);
+        if (r1) memcpy(wasmReqBody, req1, r1);
+        if (flen) memcpy(wasmReqBody + r1, fbuf, flen);
+        if (fbuf) free(fbuf);
+    } else {
+        want_upload = false; want_download = true;
+    }
+
+    emscripten_fetch_attr_t attr;
+    emscripten_fetch_attr_init(&attr);
+    safe_strcpy(attr.requestMethod, is_post ? "POST" : "GET");
+    attr.attributes = EMSCRIPTEN_FETCH_LOAD_TO_MEMORY;
+    attr.userData = this;
+    attr.onsuccess = wasm_fetch_onload;
+    attr.onerror = wasm_fetch_onload;
+    if (is_post) {
+        attr.requestData = wasmReqBody;       // must stay valid until the fetch completes
+        attr.requestDataSize = body_len;
+    }
+
+    wasmFetchDone = false;
+    start_time = dtime();
+    wasmFetch = emscripten_fetch(&attr, m_url);
+    if (!wasmFetch) {
+        if (wasmReqBody) { free(wasmReqBody); wasmReqBody = NULL; }
+        http_op_retval = ERR_HTTP_TRANSIENT;
+        http_op_state = HTTP_STATE_DONE;
+        return ERR_HTTP_TRANSIENT;
+    }
+    http_op_state = HTTP_STATE_CONNECTING;
+    if (log_flags.http_debug) {
+        msg_printf(project, MSG_INFO, "[http] wasm_fetch_exec(%s): %s", is_post?"POST":"GET", m_url);
+    }
+    return 0;
+}
+#endif  // WASM
+
 int HTTP_OP::libcurl_exec(
     const char* url, const char* in, const char* out, double offset,
 #ifdef _WIN32
@@ -412,6 +508,10 @@ int HTTP_OP::libcurl_exec(
 #endif
     bool is_post
 ) {
+#ifdef WASM
+    // Browser build: use emscripten_fetch instead of libcurl sockets.
+    return wasm_fetch_exec(url, in, out, offset, is_post);
+#endif
     CURLMcode curlMErr;
     char buf[256];
     static int outfile_seqno=0;
@@ -877,6 +977,15 @@ int curl_cleanup() {
 }
 
 void HTTP_OP::close_socket() {
+#ifdef WASM
+    // wasm build: abort/close any in-flight emscripten_fetch and free its request body
+    if (wasmFetch) {
+        emscripten_fetch_close((emscripten_fetch_t*)wasmFetch);
+        wasmFetch = NULL;
+    }
+    if (wasmReqBody) { free(wasmReqBody); wasmReqBody = NULL; }
+    return;
+#endif
     // this cleans up the curlEasy, and "spoofs" the old close_socket
     //
     if (pcurlList) {
@@ -1059,6 +1168,47 @@ void HTTP_OP::handle_messages(CURLMsg *pcurlMsg) {
 }
 
 void HTTP_OP_SET::got_select(FDSET_GROUP&, double timeout) {
+#ifdef WASM
+    // Browser build: finish any emscripten_fetch transfers that completed since last poll.
+    for (unsigned i=0; i<http_ops.size(); i++) {
+        HTTP_OP* hop = http_ops[i];
+        if (!hop->wasmFetch || !hop->wasmFetchDone) continue;
+        if (hop->http_op_state == HTTP_STATE_DONE) continue;
+        emscripten_fetch_t* f = (emscripten_fetch_t*)hop->wasmFetch;
+        hop->response = f->status;
+        // write the response body to outfile (the file HTTP_OP callers read)
+        if (f->numBytes > 0 && strlen(hop->outfile) > 0) {
+            FILE* fp = boinc_fopen(hop->outfile, "wb");
+            if (fp) { fwrite(f->data, 1, (size_t)f->numBytes, fp); fclose(fp); }
+        }
+        hop->bytes_xferred += (double)f->numBytes;
+        bytes_down += (double)f->numBytes;
+        // POST2 also returns the reply in the req1 buffer
+        if (hop->http_op_type == HTTP_OP_POST2 && hop->req1 && hop->req1_len > 0) {
+            size_t n = (size_t)f->numBytes;
+            if (n > (size_t)hop->req1_len - 1) n = (size_t)hop->req1_len - 1;
+            memcpy(hop->req1, f->data, n);
+            hop->req1[n] = 0;
+        }
+        long r = (long)f->status;
+        if (r == 200 || r == 206)      hop->http_op_retval = 0;
+        else if (r == 0)               hop->http_op_retval = ERR_CONNECT;
+        else if (r == 404 || r == 416) hop->http_op_retval = ERR_HTTP_PERMANENT;
+        else if (r >= 500)             hop->http_op_retval = ERR_HTTP_TRANSIENT;
+        else                           hop->http_op_retval = ERR_HTTP_PERMANENT;
+        hop->http_op_state = HTTP_STATE_DONE;
+        emscripten_fetch_close(f);
+        hop->wasmFetch = NULL;
+        if (hop->wasmReqBody) { free(hop->wasmReqBody); hop->wasmReqBody = NULL; }
+        if (log_flags.http_debug) {
+            msg_printf(hop->project, MSG_INFO,
+                "[http] wasm fetch done: HTTP %ld, %d bytes -> %s",
+                r, (int)f->numBytes, hop->outfile
+            );
+        }
+    }
+    return;
+#endif
     int iNumMsg;
     HTTP_OP* hop = NULL;
     CURLMsg *pcurlMsg = NULL;

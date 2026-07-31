@@ -108,6 +108,11 @@ public:
     //
     char virtualbox_version[256];
 
+    // the following is non-empty on the wasm/browser client if a WebGPU adapter was detected
+    // (e.g. "amd/rdna-2/..."); see client/main.cpp wasm_webgpu_detect_poll()
+    //
+    char webgpu_name[256];
+
     COPROCS coprocs;
 
     int num_opencl_cpu_platforms;
