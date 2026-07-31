@@ -1111,9 +1111,19 @@ bool PLAN_CLASS_SPEC::check(
             hu.proc_type = PROC_TYPE_APPLE_GPU;
             hu.gpu_usage = gpu_usage;
         } else {
+            // A custom/project-defined coproc type (e.g. "webgpu") that isn't
+            // one of the built-in PROC_TYPEs. It was matched generically via
+            // COPROCS::lookup_type() above; record it as a custom coproc so the
+            // <coproc> requirement is written to the client (see
+            // SCHED_DB_RESULT / app_version write in sched_types.cpp) and the
+            // task is scheduled on that device rather than as a CPU app.
+            // (The peak_flops==0 path above already does this; this handles the
+            // usual case where the coproc reports a nonzero peak_flops.)
+            strcpy(hu.custom_coproc_type, gpu_type);
+            hu.gpu_usage = gpu_usage;
             if (config.debug_version_select) {
                 log_messages.printf(MSG_NORMAL,
-                    "[version] plan_class_spec: unknown GPU supplied: %s\n",
+                    "[version] plan_class_spec: custom coproc type: %s\n",
                     gpu_type
                 );
             }
